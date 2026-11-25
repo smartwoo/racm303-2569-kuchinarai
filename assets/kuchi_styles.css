@@ -344,9 +344,9 @@ button, input, select, textarea {
   border: 1px solid rgba(15, 23, 42, 0.08);
   box-shadow: var(--shadow-stage);
   display: grid;
-  grid-template-columns: minmax(310px, 430px) minmax(0, 1fr);
-  gap: clamp(18px, 2.4vw, 36px);
-  padding: clamp(18px, 2.2vw, 32px);
+  grid-template-columns: minmax(270px, 380px) minmax(0, 1fr);
+  gap: clamp(16px, 2vw, 32px);
+  padding: clamp(16px, 2vw, 28px);
   overflow: hidden;
   isolation: isolate;
   align-items: center;
@@ -359,8 +359,8 @@ button, input, select, textarea {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 12px;
-  padding: clamp(16px, 1.8vw, 24px);
+  gap: 10px;
+  padding: clamp(14px, 1.5vw, 22px);
   border-radius: 24px;
   background: linear-gradient(160deg, #eff6ff 0%, #f5f3ff 100%);
   border: 1.5px solid #bfdbfe;
@@ -380,9 +380,9 @@ button, input, select, textarea {
 }
 
 .fac-qr-giant {
-  width: min(300px, 34dvh, 72vw);
+  width: min(270px, 33dvh, 66vw);
   aspect-ratio: 1 / 1;
-  padding: 12px;
+  padding: 11px;
   border-radius: 22px;
   background: #ffffff;
   border: 3px solid #0f172a;
@@ -1486,7 +1486,476 @@ button, input, select, textarea {
   font-weight: 700;
 }
 
-/* Identity Picker Grid (Used both in Phone Onboarding & Modal — 100% Clickable!) */
+/* 3-Digit Student ID Login Box & Self-Slide Lock Banner */
+.pin3-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px;
+  border-radius: 22px;
+  background: linear-gradient(155deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1.5px solid #bfdbfe;
+  text-align: center;
+}
+
+.pin3-input {
+  width: 190px;
+  height: 64px;
+  border-radius: 18px;
+  border: 2.5px solid #2563eb;
+  background: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-align: center;
+  color: #0f172a;
+  box-shadow: 0 8px 20px -6px rgba(37, 99, 235, 0.22);
+}
+
+.pin3-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+}
+
+.pin3-preview-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: #ecfdf5;
+  border: 1.5px solid #34d399;
+  text-align: left;
+}
+
+.pin3-preview-card img {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 16%;
+  border: 2px solid #ffffff;
+  flex-shrink: 0;
+}
+
+.zm-self-lock-dock {
+  position: relative;
+  z-index: 4;
+  padding: 12px 22px;
+  background: linear-gradient(135deg, #fefce8 0%, #eff6ff 100%);
+  border-top: 1.5px solid #fde68a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   5B. DYNAMIC THEMATIC ANALYSIS & AFFINITY DIAGRAM BOARD (HOPES & FEARS)
+   ========================================================================== */
+.zm-thematic-stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px clamp(14px, 2.2vw, 32px) 8px;
+  overflow-y: auto;
+}
+
+.aff-synth-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1px solid #cbd5e1;
+  font-size: clamp(12.5px, 0.92vw, 14px);
+  color: #1e293b;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.zm-split-thematic {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(270px, 0.95fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.zm-split-cloud-pane {
+  position: relative;
+  background: rgba(248, 250, 252, 0.76);
+  border: 1px dashed #cbd5e1;
+  border-radius: 20px;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.zm-split-cloud-label {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+  border-bottom: 1px dashed #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.aff-clusters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+  gap: 11px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.aff-cluster-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 8px 20px -8px rgba(15, 23, 42, 0.1);
+  padding: 11px 13px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top-width: 4px;
+  animation: zmWordPop 0.3s var(--tv-spring) both;
+}
+
+.aff-cluster-card.is-hopes {
+  border-top-color: #059669;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 38%);
+}
+
+.aff-cluster-card.is-fears {
+  border-top-color: #e11d48;
+  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 38%);
+}
+
+.aff-cluster-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.aff-cluster-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(14.5px, 1.05vw, 16.5px);
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.28;
+}
+
+.aff-cluster-count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.aff-cluster-card.is-hopes .aff-cluster-count {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.aff-cluster-card.is-fears .aff-cluster-count {
+  background: #ffe4e6;
+  color: #9f1239;
+}
+
+.aff-cluster-concept {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.aff-notes-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 4px 2px;
+}
+
+/* Authentic Tactile Paper Post-it Notes (Hope = Light Green, Fear = Soft Pink) */
+.aff-sticky-note {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 112px;
+  max-width: 195px;
+  min-height: 78px;
+  padding: 10px 12px 9px;
+  border-radius: 3px 3px 12px 3px;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.32;
+  box-shadow: 0 7px 14px -5px rgba(15, 23, 42, 0.18), 0 2px 4px rgba(15, 23, 42, 0.07);
+  transition: transform 0.18s var(--tv-ease), box-shadow 0.18s ease;
+  word-break: break-word;
+}
+
+.aff-sticky-note:nth-child(4n + 1) { transform: rotate(-1.3deg); }
+.aff-sticky-note:nth-child(4n + 2) { transform: rotate(1.1deg); }
+.aff-sticky-note:nth-child(4n + 3) { transform: rotate(-0.6deg); }
+.aff-sticky-note:nth-child(4n + 4) { transform: rotate(1.4deg); }
+
+.aff-sticky-note:hover {
+  transform: translateY(-4px) rotate(0deg) scale(1.05);
+  z-index: 15;
+  box-shadow: 0 14px 24px -6px rgba(15, 23, 42, 0.24);
+}
+
+/* HOPE = Automatic Pastel Light Green Post-it (เขียวอ่อน) */
+.aff-sticky-note.is-hopes {
+  background: linear-gradient(165deg, #ecfccb 0%, #d9f99d 62%, #bef264 100%);
+  border: 1px solid #a3e635;
+  color: #14532d;
+}
+
+.aff-sticky-note.is-hopes::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: rgba(21, 128, 61, 0.11);
+  border-radius: 2px 2px 0 0;
+}
+
+/* FEAR = Automatic Pastel Soft Pink Post-it (ชมพูอ่อน + Masking Tape) */
+.aff-sticky-note.is-fears {
+  background: linear-gradient(165deg, #fce7f3 0%, #fbcfe8 65%, #f9a8d4 100%);
+  border: 1px solid #f472b6;
+  color: #831843;
+}
+
+.aff-sticky-note.is-fears::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 36px;
+  height: 10px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(203, 213, 225, 0.68);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.postit-kicker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  opacity: 0.76;
+}
+
+.postit-kicker-tag {
+  text-decoration: underline;
+  letter-spacing: 0.02em;
+}
+
+.postit-text {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.32;
+}
+
+/* Live Interactive Post-it Writing Pad on Phone & Composer */
+.ph-postit-pad {
+  position: relative;
+  padding: 16px 16px 14px;
+  border-radius: 4px 4px 18px 4px;
+  box-shadow: 0 12px 26px -8px rgba(15, 23, 42, 0.2);
+  transition: background 0.24s ease, border-color 0.24s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ph-postit-pad.is-hopes {
+  background: linear-gradient(165deg, #ecfccb 0%, #d9f99d 75%, #bef264 100%);
+  border: 1.5px solid #84cc16;
+  color: #14532d;
+}
+
+.ph-postit-pad.is-fears {
+  background: linear-gradient(165deg, #fce7f3 0%, #fbcfe8 75%, #f9a8d4 100%);
+  border: 1.5px solid #ec4899;
+  color: #831843;
+}
+
+.ph-postit-textarea {
+  width: 100%;
+  min-height: 82px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 16.5px;
+  font-weight: 700;
+  color: #0f172a;
+  resize: none;
+  line-height: 1.4;
+}
+
+.ph-postit-textarea:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f172a;
+}
+
+.aff-dual-wall {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.aff-wall-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+  min-height: 0;
+}
+
+.aff-wall-col.is-hopes {
+  background: rgba(236, 253, 245, 0.55);
+  border: 1.5px solid #a7f3d0;
+}
+
+.aff-wall-col.is-fears {
+  background: rgba(255, 241, 242, 0.55);
+  border: 1.5px solid #fecdd3;
+}
+
+.aff-wall-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* Hopes vs Fears Choice Toggle Pills (Right after Text Input!) */
+.hf-choice-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hf-choice-btn {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.8px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.16s var(--tv-ease);
+}
+
+.hf-choice-btn.is-hopes.is-selected {
+  background: linear-gradient(135deg, #d9f99d, #a3e635);
+  border-color: #65a30d;
+  color: #14532d;
+  box-shadow: 0 6px 16px -4px rgba(101, 163, 13, 0.38);
+  transform: scale(1.03);
+}
+
+.hf-choice-btn.is-fears.is-selected {
+  background: linear-gradient(135deg, #fce7f3, #f9a8d4);
+  border-color: #ec4899;
+  color: #831843;
+  box-shadow: 0 6px 16px -4px rgba(236, 72, 153, 0.38);
+  transform: scale(1.03);
+}
+
+.ph-hf-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ph-hf-card-btn {
+  height: 52px;
+  border-radius: 14px;
+  border: 2px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-family: var(--font-heading);
+  font-size: 15.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.16s var(--tv-ease);
+}
+
+.ph-hf-card-btn.is-hopes.is-selected {
+  background: linear-gradient(135deg, #ecfccb, #bef264);
+  border-color: #65a30d;
+  color: #14532d;
+  box-shadow: 0 8px 20px -4px rgba(101, 163, 13, 0.36);
+}
+
+.ph-hf-card-btn.is-fears.is-selected {
+  background: linear-gradient(135deg, #fce7f3, #f9a8d4);
+  border-color: #ec4899;
+  color: #831843;
+  box-shadow: 0 8px 20px -4px rgba(236, 72, 153, 0.36);
+}
+
+@media (max-width: 960px) {
+  .zm-split-thematic,
+  .aff-dual-wall {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Identity Picker Grid (Fallback reference) */
 .id-picker-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
@@ -1635,12 +2104,15 @@ button, input, select, textarea {
   .tv-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .fac-checkin-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 859px) {
   .fac-lobby-card {
     grid-template-columns: 1fr;
     overflow-y: auto;
-  }
-  .fac-checkin-grid {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
 

@@ -1,15 +1,15 @@
 /* ==========================================================================
-   RACM 303 (2569) — Kuchi Gang 2569 Interactive Presentation & Live Sync Engine
-   - 21 Members (พี่สมาร์ท 1 + นศพ. 20 คน)
-   - 3 Coordinated Entry Modes:
-     1) facilitator.html (#facilitator): Slide 1 Giant QR Lobby + Master Big-Screen
-        Navigation that FORCES every scanned phone to follow in lockstep!
-     2) join.html (#join): Full-Screen Student Type-Answer Controller (Mentimeter/Kahoot)
-        synced in real time to Facilitator's Big Screen while watching results on projector
-     3) index.html: Direct 21-Card Apple TV Overview Board (7x3 on 16:9 PC) with
-        Apple TV Zoom-In / Zoom-Out + 1-click switch to Facilitator Mode
-   - Universal "← ย้อนกลับ (1 หน้าก่อนหน้า)" + "🏠 หน้าหลักใหญ่" in every view & modal
-   - Zero stopPropagation() modal bug: every card & button is 100% clickable
+   RACM 303 (2569) — Kuchi Gang 2569 Interactive Presentation & Affinity Engine
+   - 21 Members (พี่สมาร์ท 1 + นศพ. 20 คน) · ไม่มีฟังก์ชันสุ่มคน (Sequential + Apple TV Click)
+   - Clicker Sequence on Facilitator Mode (facilitator.html):
+     * Slide 1: Giant QR Code Scan-to-Join + 3-Digit Student ID Login + Check-In Wall
+     * Slide 2 (Clicker Next): (HOPES) ความหวังต่อการวนรายวิชา COMMED 5–6 สัปดาห์ (Post-it เขียวอ่อน)
+     * Slide 3 (Clicker Next): (FEARS) ความกังวลในการวนรายวิชา COMMED 5–6 สัปดาห์ (Post-it ชมพูอ่อน)
+     * Slide 4 (Clicker Next): Hopes & Fears Affinity Diagram (Conceptualization รวมเขียวอ่อน & ชมพูอ่อน)
+     * Slide 5 (Clicker Next): ภาพรวมครอบครัวกุฉินารายณ์ 21 คน (Apple TV 7x3 Grid)
+     * Slide 6+: โจทย์สะท้อนตัวตนรายคน (พี่สมาร์ท -> นศพ. #1..#20 -> ทริปกุฉินารายณ์)
+   - Dynamic Thematic Analysis: Categorize / Conceptualize / Update Emerging Themes live!
+   - Input Box Shown on Every Person's Slide EXCEPT the Logged-In Owner of That Slide!
    ========================================================================== */
 (function () {
   "use strict";
@@ -18,42 +18,504 @@
   const MEMBERS = (DATA.members || []).filter((m) => m && m.uid !== "m_fluke");
   const MEMBER_MAP = new Map(MEMBERS.map((m) => [m.uid, m]));
 
+  /* Map 3-digit shortNo ("006".."166") -> member object */
+  const SHORT3_MAP = new Map();
+  MEMBERS.forEach((m) => {
+    if (m.kind === "student" && m.shortNo) {
+      SHORT3_MAP.set(String(m.shortNo).padStart(3, "0"), m);
+    }
+  });
+
+  const TOPIC_HOPES_ID = "topic_hopes";
+  const TOPIC_FEARS_ID = "topic_fears";
+  const TOPIC_HF_BOARD_ID = "topic_hopes_fears_board";
   const TOPIC_TRIP_ID = "topic_kuchinarai_expect";
+
+  const HOPES_QUESTION_TEXT =
+    "คุณมีความหวังอย่างไรต่อการเรียนรู้และประสบการณ์ที่จะได้รับ จากการวนรายวิชา COMMED ในช่วง 5-6 สัปดาห์นี้?";
+  const FEARS_QUESTION_TEXT =
+    "อะไรคือความกังวลของคุณในการวนรายวิชา COMMED ในช่วง 5-6 สัปดาห์นี้?";
+
   const TOPIC_ROOT = "racm303/2569/kuchi_gang/v2";
   const BC_NAME = "racm303_2569_kuchi_gang_bc_v2";
   const FAC_PEER_ID = "racm303-2569-kuchi-fac-master-v2";
   const LS_MASTER_PTR = "kuchi2569_master_ptr_v2";
   const BROKERS = [
+    "wss://mqtt.eclipseprojects.io:443/mqtt",
     "wss://broker.emqx.io:8084/mqtt",
-    "wss://mqtt.eclipseprojects.io:443/mqtt"
+    "wss://broker.hivemq.com:8884/mqtt"
   ];
 
   const MENTI_COLORS = [
-    "#2563eb", // Royal Blue
-    "#e11d48", // Coral Rose
-    "#7c3aed", // Violet
-    "#059669", // Emerald
-    "#0284c7", // Sky Blue
-    "#db2777"  // Vibrant Pink
+    "#2563eb",
+    "#e11d48",
+    "#7c3aed",
+    "#059669",
+    "#0284c7",
+    "#db2777"
   ];
 
-  const QUICK_EMOJIS = ["🙏", "🔥", "💅", "🦕", "🤖", "💯", "🥰", "😎", "🩺", "🎸", "🍜", "😴", "🧗‍♀️", "✌️"];
+  const QUICK_EMOJIS = ["🙏", "🌱", "✨", "🔥", "🩺", "🤝", "💯", "🥰", "😎", "🎸", "🍜", "💪", "🧗‍♀️", "✌️"];
 
-  /* Ordered list of zoomable targets (21 members + 1 trip expectations topic) */
-  const TARGET_LIST = MEMBERS.map((m) => ({
-    id: m.uid,
-    isTopic: false,
-    member: m,
-    shortTitle: m.mentiName
-  })).concat([
+  /* Pre-Overview Thematic Slides (Slide 2 -> Slide 3 -> Slide 4) */
+  const PRE_OVERVIEW_IDS = [TOPIC_HOPES_ID, TOPIC_FEARS_ID, TOPIC_HF_BOARD_ID];
+  /* Post-Overview Member & Trip Slides (Slide 6+) */
+  const POST_OVERVIEW_IDS = MEMBERS.map((m) => m.uid).concat([TOPIC_TRIP_ID]);
+
+  const TARGET_LIST = [
     {
-      id: TOPIC_TRIP_ID,
+      id: TOPIC_HOPES_ID,
       isTopic: true,
+      isHfMode: true,
+      topicKind: "hopes",
       member: null,
-      shortTitle: "ทริปรถไฟ & รพร.กุฉินารายณ์"
+      shortTitle: "HOPES · ความหวังต่อ COMMED"
+    },
+    {
+      id: TOPIC_FEARS_ID,
+      isTopic: true,
+      isHfMode: true,
+      topicKind: "fears",
+      member: null,
+      shortTitle: "FEARS · ความกังวลต่อ COMMED"
+    },
+    {
+      id: TOPIC_HF_BOARD_ID,
+      isTopic: true,
+      isHfMode: true,
+      topicKind: "hf_board",
+      member: null,
+      shortTitle: "Hopes & Fears Affinity Diagram"
     }
-  ]);
+  ]
+    .concat(
+      MEMBERS.map((m) => ({
+        id: m.uid,
+        isTopic: false,
+        isHfMode: false,
+        topicKind: "",
+        member: m,
+        shortTitle: m.mentiName
+      }))
+    )
+    .concat([
+      {
+        id: TOPIC_TRIP_ID,
+        isTopic: true,
+        isHfMode: false,
+        topicKind: "trip",
+        member: null,
+        shortTitle: "ทริปรถไฟ & รพร.กุฉินารายณ์"
+      }
+    ]);
   const TARGET_MAP = new Map(TARGET_LIST.map((t) => [t.id, t]));
+
+  /* Sample Demo Inputs for Testing Dynamic Affinity Conceptualization */
+  const DEMO_HOPES_SAMPLES = [
+    "เข้าใจบริบทชีวิตจริงของชาวบ้าน",
+    "เห็นปัจจัยสังคมที่มีผลต่อสุขภาพ (SDH)",
+    "เรียนรู้การทำงานของ รพร. และ รพ.สต.",
+    "เข้าใจระบบสุขภาพปฐมภูมิมากขึ้น",
+    "ได้แรงบันดาลใจการเป็นหมอชุมชน",
+    "สนิทกับเพื่อนในกลุ่ม Kuchi Gang",
+    "นั่งรถไฟไปเที่ยวและกินอาหารอีสานอร่อยๆ",
+    "ทำวิจัยสำรวจชุมชนที่ใช้ประโยชน์ได้จริง",
+    "ฝึกทักษะสื่อสารกับผู้ป่วยในชุมชน",
+    "ได้พักผ่อนและฮีลใจนอกห้องเรียน"
+  ];
+
+  const DEMO_FEARS_SAMPLES = [
+    "งานรายงานและสไลด์เยอะจนพักผ่อนไม่พอ",
+    "กังวลเรื่องการสอบและการตอบคำถามตอนนำเสนอ",
+    "กลัววิเคราะห์สถิติ SPSS ไม่คล่อง",
+    "เก็บข้อมูลแบบสอบถามไม่ครบตามเป้า",
+    "ฟังภาษาอีสาน/ผู้ไทของชาวบ้านไม่เข้าใจ",
+    "เกรงใจชาวบ้านเวลาลงเยี่ยมบ้าน",
+    "นอนบนรถไฟไม่หลับและแปลกที่",
+    "กลัวท้องเสียหรือไม่สบายระหว่างทริป",
+    "การแบ่งงานและประสานงานในกลุ่มใหญ่"
+  ];
+
+  /* ==========================================================================
+     DYNAMIC THEMATIC ANALYSIS & CONCEPTUALIZATION ENGINE (HOPES & FEARS)
+     - Categorizes, conceptualizes, and dynamically evolves Emerging Theme names
+       as inputs grow in real time!
+     ========================================================================== */
+  const THEMATIC_SCHEMA = {
+    hopes: [
+      {
+        id: "h_community_sdh",
+        icon: "🏡",
+        facets: {
+          life: ["ชุมชน", "ชาวบ้าน", "วิถี", "วัฒนธรรม", "ผู้ไท", "อีสาน", "กาฬสินธุ์", "กุฉินารายณ์", "พื้นที่จริง", "ลงพื้นที่", "เยี่ยมบ้าน", "home visit", "อสม", "ชนบท", "นอกห้องเรียน"],
+          sdh: ["คนไข้", "ผู้ป่วย", "บริบท", "สังคม", "sdh", "ปัจจัยกำหนด", "องค์รวม", "holistic", "เข้าใจคน", "ชีวิตจริง", "ความเป็นอยู่"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.life > 0 && fCounts.sdh > 0) return "เข้าใจสุขภาวะชุมชนจริงเชื่อมโยงบริบทสังคม (SDH)";
+          if (fCounts.sdh > 0) return "เข้าใจผู้ป่วยแบบองค์รวมและปัจจัยทางสังคม";
+          return "สัมผัสวิถีชีวิตชุมชนจริงนอกห้องเรียน";
+        },
+        conceptFn(fCounts) {
+          if (fCounts.life > 0 && fCounts.sdh > 0) return "การเรียนรู้จากพื้นที่จริงเพื่อเชื่อมวิถีชุมชนเข้ากับปัจจัยกำหนดสุขภาพของผู้ป่วย";
+          return "การเปิดมุมมองการเรียนรู้นอกรั้วโรงเรียนแพทย์สู่บริบทชุมชนจริง";
+        }
+      },
+      {
+        id: "h_hss_role",
+        icon: "🏥",
+        facets: {
+          sys: ["ระบบสุขภาพ", "ระบบบริการ", "ปฐมภูมิ", "รพ.สต", "รพร", "รพช", "โรงพยาบาลชุมชน", "บัตรทอง", "uhc", "นโยบาย", "เชิงระบบ", "system", "cld", "ส่งต่อ", "อำเภอ"],
+          role: ["หมอชุมชน", "แพทย์ชุมชน", "บทบาทแพทย์", "แรงบันดาลใจ", "ความเป็นหมอ", "สหวิชาชีพ", "ผู้นำ", "change agent", "อนาคต"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.sys > 0 && fCounts.role > 0) return "เชื่อมโยงระบบสุขภาพอำเภอสู่บทบาทแพทย์ชุมชน";
+          if (fCounts.role > 0) return "ค้นพบบทบาทและแรงบันดาลใจของการเป็นแพทย์ชุมชน";
+          return "เห็นภาพจริงของระบบบริการปฐมภูมิและการคิดเชิงระบบ";
+        },
+        conceptFn() {
+          return "การเข้าใจกลไกระบบบริการสุขภาพระดับอำเภอและบทบาททีมสหวิชาชีพ";
+        }
+      },
+      {
+        id: "h_epi_skills",
+        icon: "📊",
+        facets: {
+          epi: ["วิจัย", "สำรวจ", "survey", "ระบาด", "epi", "สถิติ", "spss", "ข้อมูล", "แบบสอบถาม", "วิเคราะห์", "เปเปอร์", "ebm", "โครงการ"],
+          comm: ["สื่อสาร", "สัมภาษณ์", "พูดคุย", "ตั้งคำถาม", "แก้ปัญหา", "ประยุกต์", "ใช้ได้จริง", "ทักษะ", "ปฏิบัติ"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.epi > 0 && fCounts.comm > 0) return "ฝึกวิจัยระบาดวิทยาควบคู่ทักษะสื่อสารและแก้ปัญหาจริง";
+          if (fCounts.comm > 0) return "พัฒนาทักษะสื่อสารชุมชนและการประยุกต์ใช้ความรู้";
+          return "ทำวิจัยสำรวจสุขภาพและระบาดวิทยาที่เกิดประโยชน์จริง";
+        },
+        conceptFn() {
+          return "การแปรความรู้ระบาดวิทยาและการสื่อสารสู่การปฏิบัติงานในพื้นที่";
+        }
+      },
+      {
+        id: "h_team_memory",
+        icon: "🚂",
+        facets: {
+          bond: ["เพื่อน", "สนิท", "มิตรภาพ", "รู้จัก", "กลุ่ม", "ทีม", "team", "สามัคคี", "ช่วยเหลือ", "kuchi", "พี่สมาร์ท", "อาจารย์", "ครอบครัว"],
+          joy: ["สนุก", "มีความสุข", "ประสบการณ์ใหม่", "รถไฟ", "เที่ยว", "อาหาร", "อร่อย", "ส้มตำ", "หมอลำ", "ความทรงจำ", "ประทับใจ", "เปิดโลก", "ม่วน"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.bond > 0 && fCounts.joy > 0) return "ถักทอมิตรภาพ Kuchi Gang และความทรงจำทริปรถไฟ";
+          if (fCounts.bond > 0) return "สร้างความสัมพันธ์ในทีมและมิตรภาพที่อบอุ่น";
+          return "เปิดโลกประสบการณ์ใหม่และความสุขในการเดินทางเรียนรู้";
+        },
+        conceptFn() {
+          return "พลังความสัมพันธ์ของสมาชิกในกลุ่มและประสบการณ์ร่วมระหว่างออกภาคสนาม";
+        }
+      },
+      {
+        id: "h_wellbeing_growth",
+        icon: "🌿",
+        facets: {
+          rest: ["พักผ่อน", "นอน", "ไม่เครียด", "ชิล", "ฮีลใจ", "balance", "สมดุล", "สบายใจ", "ราบรื่น", "ผ่าน", "เกรด", "คะแนน"],
+          grow: ["เติบโต", "มั่นใจ", "ปลอดภัย", "กล้า", "สะท้อนคิด", "เข้าใจตัวเอง", "มุมมองใหม่"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.rest > 0 && fCounts.grow > 0) return "พื้นที่เรียนรู้ที่ปลอดภัย สมดุล และเติมพลังใจ";
+          if (fCounts.grow > 0) return "การเติบโตภายในและการสะท้อนคิดตัวตนวิชาชีพ";
+          return "สมดุลการเรียนรู้ การพักผ่อน และการฮีลใจ";
+        },
+        conceptFn() {
+          return "สุขภาวะของผู้เรียน บรรยากาศที่เกื้อกูล และการเติบโตเชิงวิชาชีพ";
+        }
+      }
+    ],
+    fears: [
+      {
+        id: "f_workload_eval",
+        icon: "⏰",
+        facets: {
+          load: ["งานเยอะ", "งานหนัก", "รายงาน", "ปั่นงาน", "เดดไลน์", "deadline", "เวลาไม่พอ", "นอนดึก", "อดนอน", "เหนื่อย", "ล้า", "สไลด์", "srn", "ตื่นเช้า", "ภาระงาน"],
+          eval: ["สอบ", "คะแนน", "เกรด", "ตก", "ไม่ผ่าน", "พรีเซนต์", "นำเสนอ", "ตอบคำถาม", "โดนถาม", "ประเมิน", "กดดัน"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.load > 0 && fCounts.eval > 0) return "ความตึงมือด้านภาระงาน เวลาพักผ่อน และการประเมินผล";
+          if (fCounts.eval > 0) return "ความกังวลต่อการสอบ การนำเสนอ และเกณฑ์ประเมิน";
+          return "ภาระงาน-รายงานหนาแน่นและการจัดสรรเวลาพักผ่อน";
+        },
+        conceptFn() {
+          return "ความสมดุลระหว่างปริมาณชิ้นงาน กำหนดส่ง การนำเสนอ และเวลาพัก";
+        }
+      },
+      {
+        id: "f_epi_complexity",
+        icon: "📐",
+        facets: {
+          stat: ["สถิติ", "spss", "วิเคราะห์ข้อมูล", "คำนวณ", "ตัวเลข", "โค้ด", "แบบสอบถาม", "sample", "ระบาด", "epi", "เก็บข้อมูล", "กลุ่มตัวอย่าง", "วิจัย"],
+          concept: ["เนื้อหายาก", "ทฤษฎี", "จับประเด็น", "งง", "ตามไม่ทัน", "cld", "ซับซ้อน", "เศรษฐศาสตร์", "สังเคราะห์", "ความรู้ไม่แน่น"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.stat > 0 && fCounts.concept > 0) return "ความท้าทายด้านสถิติวิจัยและการสังเคราะห์กรอบคิดเชิงระบบ";
+          if (fCounts.concept > 0) return "ความซับซ้อนของกรอบคิดทฤษฎีและการจับประเด็นสำคัญ";
+          return "ความกังวลในการเก็บข้อมูลสำรวจและวิเคราะห์สถิติ (SPSS)";
+        },
+        conceptFn() {
+          return "ความมั่นใจเชิงระเบียบวิธีวิจัยระบาดวิทยาและการเชื่อมโยงทฤษฎีสู่พื้นที่";
+        }
+      },
+      {
+        id: "f_comm_culture",
+        icon: "🗣️",
+        facets: {
+          lang: ["ภาษา", "อีสาน", "ผู้ไท", "ฟังไม่ออก", "พูดไม่รู้เรื่อง", "สำเนียง", "สื่อสาร", "สัมภาษณ์", "คุยกับชาวบ้าน", "ถามไม่ถูก", "เดดแอร์"],
+          trust: ["เกรงใจ", "รบกวนชาวบ้าน", "ไม่ให้ความร่วมมือ", "ทำตัวไม่ถูก", "ตอบชาวบ้านไม่ได้", "แนะนำผิด", "ทำพลาด"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.lang > 0 && fCounts.trust > 0) return "กำแพงภาษาถิ่นและความเกรงใจในการสื่อสารกับชุมชน";
+          if (fCounts.trust > 0) return "ความไม่มั่นใจในบทบาทและการสร้างความไว้วางใจกับชาวบ้าน";
+          return "อุปสรรคด้านภาษาถิ่นและทักษะการสัมภาษณ์เชิงลึก";
+        },
+        conceptFn() {
+          return "การสื่อสารข้ามวัฒนธรรม ภาษาถิ่น และมารยาทการเรียนรู้ร่วมกับชุมชน";
+        }
+      },
+      {
+        id: "f_travel_health",
+        icon: "🧳",
+        facets: {
+          living: ["รถไฟ", "นอนรถไฟ", "เดินทาง", "ที่พัก", "ห้องน้ำ", "แมลง", "จิ้งจก", "ยุง", "หนาว", "ร้อน", "อากาศ", "แปลกที่", "นอนไม่หลับ", "คิดถึงบ้าน"],
+          health: ["อาหาร", "ท้องเสีย", "ป่วย", "ไม่สบาย", "แพ้", "โรค", "ความปลอดภัย", "อุบัติเหตุ", "ของหาย", "หลง"]
+        },
+        nameFn(fCounts) {
+          if (fCounts.living > 0 && fCounts.health > 0) return "การปรับตัวด้านที่พัก การเดินทาง และสุขภาพกายระหว่างทริป";
+          if (fCounts.health > 0) return "ความกังวลด้านสุขภาพ อาหาร และความปลอดภัยต่างถิ่น";
+          return "การเดินทางไกลด้วยรถไฟและการปรับตัวกับสภาพแวดล้อมใหม่";
+        },
+        conceptFn() {
+          return "ความพร้อมทางกายภาพ ความเป็นอยู่ และความปลอดภัยตลอด 10 วันในพื้นที่";
+        }
+      },
+      {
+        id: "f_team_dynamics",
+        icon: "🤝",
+        facets: {
+          team: ["งานกลุ่ม", "แบ่งงาน", "ความเห็นไม่ตรง", "ประสานงาน", "เกรงใจเพื่อน", "ภาระเพื่อน", "ตามเพื่อน", "คนเยอะ", "สื่อสารในกลุ่ม", "ขัดแย้ง", "ไม่สนิท"]
+        },
+        nameFn() {
+          return "การประสานงาน แบ่งบทบาท และจังหวะการทำงานในกลุ่มใหญ่";
+        },
+        conceptFn() {
+          return "กระบวนการทำงานร่วมกันของสมาชิก 20 คนให้ราบรื่นและเกื้อกูลกัน";
+        }
+      }
+    ]
+  };
+
+  function classifySingleTextToRule(rawText, polarity) {
+    const rules = THEMATIC_SCHEMA[polarity === "fears" ? "fears" : "hopes"];
+    const low = String(rawText || "").toLowerCase();
+    let bestRule = null;
+    let bestScore = 0;
+    let bestFacets = {};
+
+    rules.forEach((rule) => {
+      let score = 0;
+      const fHit = {};
+      Object.keys(rule.facets).forEach((fKey) => {
+        fHit[fKey] = 0;
+        rule.facets[fKey].forEach((kw) => {
+          if (low.includes(kw.toLowerCase())) {
+            score += kw.length >= 5 ? 2 : 1.2;
+            fHit[fKey] += 1;
+          }
+        });
+      });
+      if (score > bestScore) {
+        bestScore = score;
+        bestRule = rule;
+        bestFacets = fHit;
+      }
+    });
+
+    return bestScore > 0 ? { rule: bestRule, facetHits: bestFacets } : null;
+  }
+
+  function extractKeyStem(text) {
+    const cleaned = String(text || "")
+      .replace(/[^\u0E00-\u0E7FA-Za-z0-9\s]/g, " ")
+      .trim();
+    if (!cleaned) return "";
+    const parts = cleaned.split(/\s+/).filter((w) => w.length >= 2);
+    if (!parts.length) return cleaned.slice(0, 12);
+    return parts.reduce((a, b) => (b.length > a.length ? b : a), parts[0]).slice(0, 16);
+  }
+
+  /* Synthesize Dynamic Emerging Themes from aggregated items! */
+  function synthesizeDynamicThemes(aggItems, polarity) {
+    const pol = polarity === "fears" ? "fears" : "hopes";
+    if (!aggItems || !aggItems.length) {
+      return { clusters: [], totalVotes: 0, summaryLine: "" };
+    }
+
+    const totalVotes = aggItems.reduce((s, x) => s + (x.count || 1), 0);
+    const buckets = new Map();
+    const unmatched = [];
+
+    aggItems.forEach((item) => {
+      const hit = classifySingleTextToRule(item.text, pol);
+      if (hit && hit.rule) {
+        if (!buckets.has(hit.rule.id)) {
+          buckets.set(hit.rule.id, {
+            id: hit.rule.id,
+            icon: hit.rule.icon,
+            rule: hit.rule,
+            facetTotals: {},
+            notes: [],
+            voteSum: 0
+          });
+        }
+        const b = buckets.get(hit.rule.id);
+        Object.keys(hit.facetHits).forEach((fk) => {
+          b.facetTotals[fk] = (b.facetTotals[fk] || 0) + hit.facetHits[fk] * (item.count || 1);
+        });
+        b.notes.push(item);
+        b.voteSum += item.count || 1;
+      } else {
+        unmatched.push(item);
+      }
+    });
+
+    // Stage 2: Inductive Token-Overlap Clustering for Emergent Unmatched Items
+    const emergentGroups = [];
+    unmatched.forEach((item) => {
+      const low = item.text.toLowerCase();
+      // First check if it shares >=4-char substring with an existing matched bucket note
+      let attachedBucket = null;
+      buckets.forEach((b) => {
+        if (attachedBucket) return;
+        for (let i = 0; i < b.notes.length; i += 1) {
+          const stem = extractKeyStem(b.notes[i].text).toLowerCase();
+          if (stem.length >= 3 && low.includes(stem)) {
+            attachedBucket = b;
+            break;
+          }
+        }
+      });
+      if (attachedBucket) {
+        attachedBucket.notes.push(item);
+        attachedBucket.voteSum += item.count || 1;
+        return;
+      }
+
+      // Otherwise cluster among unmatched items by shared stem
+      const myStem = extractKeyStem(item.text);
+      let foundGrp = emergentGroups.find(
+        (g) => (g.stem && low.includes(g.stem.toLowerCase())) || (myStem.length >= 3 && g.stem.toLowerCase().includes(myStem.toLowerCase()))
+      );
+      if (foundGrp) {
+        foundGrp.notes.push(item);
+        foundGrp.voteSum += item.count || 1;
+      } else {
+        emergentGroups.push({
+          stem: myStem,
+          notes: [item],
+          voteSum: item.count || 1
+        });
+      }
+    });
+
+    const clusters = [];
+
+    buckets.forEach((b) => {
+      const customKey = `${pol}:${b.id}`;
+      const autoTitle = b.rule.nameFn(b.facetTotals);
+      const customTitle = state.customThemeTitles.get(customKey);
+      clusters.push({
+        clusterKey: customKey,
+        polarity: pol,
+        icon: b.icon,
+        title: customTitle || autoTitle,
+        autoTitle,
+        concept: b.rule.conceptFn(b.facetTotals),
+        notes: b.notes,
+        voteSum: b.voteSum,
+        pct: Math.round((b.voteSum / Math.max(1, totalVotes)) * 100)
+      });
+    });
+
+    // Turn multi-item emergent groups into dedicated Emerging Themes, and merge singletons cleanly
+    const singletons = [];
+    emergentGroups.forEach((eg, idx) => {
+      if (eg.notes.length >= 2 || eg.voteSum >= 2 || clusters.length === 0) {
+        const cKey = `${pol}:emergent_${idx}_${eg.stem}`;
+        const customTitle = state.customThemeTitles.get(cKey);
+        const autoTitle =
+          eg.stem && !isPureEmoji(eg.stem)
+            ? `ประเด็นร่วมเกิดใหม่: "${eg.stem}"`
+            : pol === "hopes"
+            ? "พลังบวกและความคาดหวังร่วมจากกลุ่ม"
+            : "ข้อกังวลเพิ่มเติมที่กลุ่มสะท้อนร่วมกัน";
+        clusters.push({
+          clusterKey: cKey,
+          polarity: pol,
+          icon: pol === "hopes" ? "✨" : "💭",
+          title: customTitle || autoTitle,
+          autoTitle,
+          concept: "ประเด็นอุบัติใหม่ที่สังเคราะห์ขึ้นอัตโนมัติจากคำสำคัญซ้ำของผู้เรียน",
+          notes: eg.notes,
+          voteSum: eg.voteSum,
+          pct: Math.round((eg.voteSum / Math.max(1, totalVotes)) * 100)
+        });
+      } else {
+        singletons.push(...eg.notes);
+      }
+    });
+
+    if (singletons.length > 0) {
+      const sSum = singletons.reduce((s, n) => s + (n.count || 1), 0);
+      const cKey = `${pol}:open_emerging`;
+      const customTitle = state.customThemeTitles.get(cKey);
+      const topSample = singletons[0].text.slice(0, 18);
+      const autoTitle =
+        singletons.length === 1
+          ? `ประเด็นเฉพาะบุคคล: "${topSample}"`
+          : pol === "hopes"
+          ? "มุมมองความหวังและเป้าหมายเฉพาะบุคคลเพิ่มเติม"
+          : "ข้อห่วงใยและประเด็นเฝ้าระวังเฉพาะจุดเพิ่มเติม";
+      clusters.push({
+        clusterKey: cKey,
+        polarity: pol,
+        icon: pol === "hopes" ? "🌱" : "📌",
+        title: customTitle || autoTitle,
+        autoTitle,
+        concept: "ประเด็นหลากหลายที่รอเชื่อมโยงเพิ่มเติมเมื่อมีข้อมูลเข้ามาเพิ่ม",
+        notes: singletons,
+        voteSum: sSum,
+        pct: Math.round((sSum / Math.max(1, totalVotes)) * 100)
+      });
+    }
+
+    clusters.sort((a, b) => b.voteSum - a.voteSum);
+
+    const topNames = clusters
+      .slice(0, 2)
+      .map((c) => `"${c.title}" (${c.pct}%)`)
+      .join(" และ ");
+    const summaryLine = `สังเคราะห์สดได้ ${clusters.length} Emerging Theme จาก ${totalVotes} Post-it — ประเด็นเด่น: ${topNames}`;
+
+    return { clusters, totalVotes, summaryLine };
+  }
+
+  function previewEmergingThemeForInput(rawText, polarity) {
+    const clean = String(rawText || "").trim();
+    if (!clean) {
+      return polarity === "fears"
+        ? "พิมพ์ข้อความเพื่อดูการจัดหมวด Emerging Theme อัตโนมัติ (Post-it ชมพูอ่อน)"
+        : "พิมพ์ข้อความเพื่อดูการจัดหมวด Emerging Theme อัตโนมัติ (Post-it เขียวอ่อน)";
+    }
+    const hit = classifySingleTextToRule(clean, polarity);
+    if (hit && hit.rule) {
+      return `จัดเข้ากลุ่มอัตโนมัติ: ${hit.rule.icon} ${hit.rule.nameFn(hit.facetHits)}`;
+    }
+    return polarity === "fears"
+      ? `ประเด็นใหม่ (Open Coding): "${clean.slice(0, 22)}"`
+      : `ประเด็นใหม่ (Open Coding): "${clean.slice(0, 22)}"`;
+  }
 
   /* ---------- 1. Helpers, URL Resolution & Safe Storage ---------- */
   function esc(s) {
@@ -88,10 +550,9 @@
       const clean = window.location.href.split("#")[0].split("?")[0];
       return clean.replace(/\/[^/]*$/, "/");
     }
-    return DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-kuchinarai/";
+    return DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-student/kuchinarai/";
   }
 
-  /* Student-safe QR Join URL (Always points to verified 200 OK Student Portal join.html!) */
   function getJoinUrl() {
     const studentSafeBase = DATA.meta.fallbackStudentUrl || "https://smartwoo.github.io/racm303-2569-student/kuchinarai/";
     const qs = state && state.sessionId && state.sessionId !== "sg1_intro" ? `?s=${encodeURIComponent(state.sessionId)}` : "";
@@ -100,10 +561,6 @@
 
   function getFacilitatorUrl() {
     return `${getBaseDirUrl()}facilitator.html`;
-  }
-
-  function getOverviewPageUrl() {
-    return `${getBaseDirUrl()}index.html`;
   }
 
   function resolveMainPortalUrl() {
@@ -116,6 +573,23 @@
       return DATA.meta.facultyPortalUrl || "https://smartwoo.github.io/racm303-2569-faculty-member/";
     }
     return DATA.meta.studentPortalUrl || "https://smartwoo.github.io/racm303-2569-student/";
+  }
+
+  function matchMemberByCode(rawInput) {
+    const clean = String(rawInput || "").trim().toUpperCase();
+    if (!clean) return null;
+    if (clean === "AJ" || clean === "000" || clean === "SMART") {
+      return MEMBER_MAP.get("m_smart") || null;
+    }
+    const digits = clean.replace(/\D/g, "");
+    if (digits.length === 3 && SHORT3_MAP.has(digits)) {
+      return SHORT3_MAP.get(digits);
+    }
+    if (digits.length === 7 && digits.startsWith("6702")) {
+      const last3 = digits.slice(-3);
+      if (SHORT3_MAP.has(last3)) return SHORT3_MAP.get(last3);
+    }
+    return null;
   }
 
   const NAV_ICONS = {
@@ -137,7 +611,6 @@
       .toLowerCase();
   }
 
-  /* VisualViewport On-Screen Keyboard Safe Inset for Mobile / Tablet */
   function syncKeyboardInset() {
     try {
       const vv = window.visualViewport;
@@ -479,8 +952,12 @@
 
   const initialDirectTarget = TARGET_MAP.has(initialHash) ? initialHash : "";
   const savedUidRaw = sGet("kuchi2569_my_uid", "");
-  const sanitizedSavedUid = MEMBER_MAP.has(savedUidRaw) ? savedUidRaw : "";
+  let sanitizedSavedUid = MEMBER_MAP.has(savedUidRaw) ? savedUidRaw : "";
   if (savedUidRaw && !sanitizedSavedUid) sSet("kuchi2569_my_uid", "");
+
+  if (detectedRole === "facilitator" && !sanitizedSavedUid && !sGet("kuchi2569_guest_name", "")) {
+    sanitizedSavedUid = "m_smart";
+  }
 
   const paramSession = urlParams.get("s");
   const validSessionIds = new Set((DATA.sessions || []).map((s) => s.id));
@@ -491,10 +968,11 @@
 
   const state = {
     role: detectedRole, // "facilitator" | "participant" | "explorer"
-    // Facilitator starts on Slide 1 Giant QR Lobby ("lobby"); Explorer starts on 21-Member Overview ("overview")
     view: initialDirectTarget ? "detail" : detectedRole === "facilitator" ? "lobby" : "overview",
-    activeTargetId: initialDirectTarget || "m_smart",
+    activeTargetId: initialDirectTarget || TOPIC_HOPES_ID,
     detailTab: "wordcloud", // "wordcloud" | "rating"
+    hfDisplayMode: "split", // "split" (Post-it Affinity + Word Cloud) | "affinity" | "cloud"
+    hfSelectedPolarity: initialDirectTarget === TOPIC_FEARS_ID ? "fears" : "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
     overviewReturningFromId: "",
     isAnimatingZoomOut: false,
     dpadIndex: 0,
@@ -502,17 +980,17 @@
     sessionId: initialSessionId,
     pointerSeq: 0,
     hideWordsUntilReveal: false,
-    showComposerOnStage: detectedRole !== "facilitator", // Clean Big-Screen Results for Facilitator!
+    showComposerOnStage: true,
     muted: sGet("kuchi2569_muted", "0") === "1",
 
-    // Roulette
-    rouletteSpinning: false,
-    rouletteFlashUid: "",
-    pickedUids: new Set(),
-
-    // Participant / Phone Controller State
+    // Identity (Step 1 via 3-digit Student ID)
     myMemberUid: sanitizedSavedUid,
     myGuestName: sGet("kuchi2569_guest_name", ""),
+    pinDraft: "",
+    pinError: "",
+    showAllNamesFallback: false,
+
+    // Participant / Phone Controller State
     followHost: detectedRole === "participant",
     hasSeenFacilitator: false,
     phonePickingIdentity: false,
@@ -521,18 +999,19 @@
     phoneDraftRating: 4.5,
     activeEmojiInputId: "phW1",
 
-    // Modals (for Facilitator / Explorer)
+    // Modals
     qrModalOpen: false,
     identityModalOpen: false,
     roadmapModalOpen: false,
     resultsModalTargetId: "",
 
-    // Step-by-step navigation stack for "← ย้อนกลับ (1 หน้าก่อนหน้า)"
+    // Navigation history stack for "← ย้อนกลับ"
     navStack: [],
 
     // Live synced data
     wordsByTarget: new Map(),
     ratingsByTarget: new Map(),
+    customThemeTitles: new Map(),
     presence: new Map(),
 
     // Transports
@@ -544,7 +1023,11 @@
     connectedCount: 0
   };
 
-  /* Restore last local master pointer immediately if Phone opens in same browser */
+  function syncDefaultPolarityWithTarget(targetId) {
+    if (targetId === TOPIC_HOPES_ID) state.hfSelectedPolarity = "hopes";
+    else if (targetId === TOPIC_FEARS_ID) state.hfSelectedPolarity = "fears";
+  }
+
   if (state.role === "participant") {
     try {
       const rawPtr = sGet(LS_MASTER_PTR, "");
@@ -587,7 +1070,7 @@
     }
   }
 
-  /* ---------- 6. Navigation History Stack + Apple TV Zoom Transitions ---------- */
+  /* ---------- 6. Navigation Stack, Clicker Sequence & Apple TV Zoom ---------- */
   function captureNavSnap() {
     return {
       view: state.view,
@@ -634,12 +1117,12 @@
     state.identityModalOpen = false;
     state.roadmapModalOpen = false;
     state.resultsModalTargetId = "";
+    state.pinError = "";
   }
 
   function stepBackOneScreen() {
-    if (state.isAnimatingZoomOut || state.rouletteSpinning) return;
+    if (state.isAnimatingZoomOut) return;
 
-    // Phone mode step-back handling
     if (state.role === "participant") {
       if (state.phonePickingIdentity && (state.myMemberUid || state.myGuestName)) {
         state.phonePickingIdentity = false;
@@ -681,12 +1164,13 @@
 
       if (state.view === "overview" && prev.view === "detail" && !hasAnyOpenModal()) {
         state.detailTab = prev.detailTab || "wordcloud";
-        zoomIntoTarget(prev.activeTargetId || "m_smart", null, false, true);
+        zoomIntoTarget(prev.activeTargetId || TOPIC_HOPES_ID, null, false, true);
         return;
       }
 
       state.view = prev.view || (state.role === "facilitator" ? "lobby" : "overview");
-      state.activeTargetId = prev.activeTargetId || "m_smart";
+      state.activeTargetId = prev.activeTargetId || TOPIC_HOPES_ID;
+      syncDefaultPolarityWithTarget(state.activeTargetId);
       state.detailTab = prev.detailTab || "wordcloud";
       playChime([523.25, 440], 0.08, "sine", 0.04);
       broadcastMasterPointer(false);
@@ -700,11 +1184,11 @@
       return;
     }
     if (state.view === "detail") {
-      zoomOutToOverview(false, true);
+      clickerPrevSlide();
       return;
     }
     if (state.role === "facilitator" && state.view === "overview") {
-      goToLobbySlide1(true);
+      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, true);
       return;
     }
 
@@ -732,6 +1216,7 @@
     clearAllModals();
     state.overviewReturningFromId = "";
     state.isAnimatingZoomOut = false;
+    syncDefaultPolarityWithTarget(targetId);
 
     if (state.view === "overview") {
       captureTileOrigin(targetId, sourceEl);
@@ -743,23 +1228,14 @@
         state.view = "detail";
         state.activeTargetId = targetId;
         if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
-        const tObj = TARGET_MAP.get(targetId);
-        if (tObj && tObj.member) {
-          state.pickedUids.add(tObj.member.uid);
-          saveSessionStore();
-        }
         if (!isRemoteSync) broadcastMasterPointer(false);
         render();
       }, 150);
     } else {
+      setZoomOrigin(window.innerWidth / 2, window.innerHeight / 2);
       state.view = "detail";
       state.activeTargetId = targetId;
       if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
-      const tObj = TARGET_MAP.get(targetId);
-      if (tObj && tObj.member) {
-        state.pickedUids.add(tObj.member.uid);
-        saveSessionStore();
-      }
       playChime([523.25, 659.25], 0.09, "sine", 0.04);
       if (!isRemoteSync) broadcastMasterPointer(false);
       render();
@@ -809,55 +1285,71 @@
     }, 260);
   }
 
-  function stepZoomedTarget(delta) {
-    const idx = TARGET_LIST.findIndex((t) => t.id === state.activeTargetId);
-    const nextIdx = (idx + delta + TARGET_LIST.length) % TARGET_LIST.length;
-    zoomIntoTarget(TARGET_LIST[nextIdx].id, null, false, false);
+  /* Presentation Clicker Exact Flow:
+     Slide 1 (QR Lobby)
+       -> Slide 2: HOPES (Post-it เขียวอ่อน + Dynamic Affinity)
+       -> Slide 3: FEARS (Post-it ชมพูอ่อน + Dynamic Affinity)
+       -> Slide 4: Hopes & Fears Conceptualization Board รวม
+       -> Slide 5: Overview 21 คน (Apple TV Grid)
+       -> Slide 6+: พี่สมาร์ท -> นศพ. #1..#20 -> ทริปกุฉินารายณ์ */
+  function clickerNextSlide() {
+    if (state.isAnimatingZoomOut) return;
+    if (state.view === "lobby") {
+      zoomIntoTarget(TOPIC_HOPES_ID, null, false, false);
+      return;
+    }
+    if (state.view === "detail") {
+      const preIdx = PRE_OVERVIEW_IDS.indexOf(state.activeTargetId);
+      if (preIdx >= 0) {
+        if (preIdx < PRE_OVERVIEW_IDS.length - 1) {
+          zoomIntoTarget(PRE_OVERVIEW_IDS[preIdx + 1], null, false, false);
+        } else {
+          zoomOutToOverview(false, false);
+        }
+        return;
+      }
+      const postIdx = POST_OVERVIEW_IDS.indexOf(state.activeTargetId);
+      if (postIdx >= 0 && postIdx < POST_OVERVIEW_IDS.length - 1) {
+        zoomIntoTarget(POST_OVERVIEW_IDS[postIdx + 1], null, false, false);
+      } else {
+        zoomOutToOverview(false, false);
+      }
+      return;
+    }
+    if (state.view === "overview") {
+      const firstId = POST_OVERVIEW_IDS[0] || "m_smart";
+      const firstTile = document.querySelector(`[data-tile-id="${firstId}"]`);
+      zoomIntoTarget(firstId, firstTile, false, false);
+    }
   }
 
-  function spinAppleTvRoulette() {
-    if (state.rouletteSpinning) return;
-    const preSpinSnap = captureNavSnap();
-    clearAllModals();
-    if (state.view !== "overview") {
-      state.view = "overview";
-      broadcastMasterPointer(false);
-      render();
-    }
+  function clickerPrevSlide() {
+    if (state.isAnimatingZoomOut) return;
+    if (state.view === "lobby") return;
 
-    let candidates = MEMBERS.filter((m) => !state.pickedUids.has(m.uid));
-    if (candidates.length === 0) {
-      state.pickedUids.clear();
-      candidates = MEMBERS.slice();
-    }
-    const winner = candidates[Math.floor(Math.random() * candidates.length)];
-    state.rouletteSpinning = true;
-
-    const totalTicks = 20;
-    let tick = 0;
-    const runStep = () => {
-      if (tick < totalTicks) {
-        const pick = candidates[tick % candidates.length];
-        state.rouletteFlashUid = pick.uid;
-        document.querySelectorAll("[data-tile-id]").forEach((el) => {
-          el.classList.toggle("is-roulette-flash", el.getAttribute("data-tile-id") === pick.uid);
-        });
-        playChime([370 + (tick % 6) * 48], 0.045, "sine", 0.04);
-        tick += 1;
-        setTimeout(runStep, 55 + Math.pow(tick / totalTicks, 2.15) * 190);
-      } else {
-        state.rouletteSpinning = false;
-        state.rouletteFlashUid = winner.uid;
-        playChime([523.25, 659.25, 783.99, 1046.5], 0.15, "triangle", 0.075);
-        const winEl = document.querySelector(`[data-tile-id="${winner.uid}"]`);
-        setTimeout(() => {
-          state.rouletteFlashUid = "";
-          pushNavHistory(preSpinSnap);
-          zoomIntoTarget(winner.uid, winEl, false, true);
-        }, 380);
+    if (state.view === "detail") {
+      const preIdx = PRE_OVERVIEW_IDS.indexOf(state.activeTargetId);
+      if (preIdx === 0) {
+        if (state.role === "facilitator") goToLobbySlide1(false);
+        else zoomOutToOverview(false, false);
+        return;
       }
-    };
-    runStep();
+      if (preIdx > 0) {
+        zoomIntoTarget(PRE_OVERVIEW_IDS[preIdx - 1], null, false, false);
+        return;
+      }
+      const postIdx = POST_OVERVIEW_IDS.indexOf(state.activeTargetId);
+      if (postIdx > 0) {
+        zoomIntoTarget(POST_OVERVIEW_IDS[postIdx - 1], null, false, false);
+      } else {
+        zoomOutToOverview(false, false);
+      }
+      return;
+    }
+
+    if (state.view === "overview") {
+      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false);
+    }
   }
 
   /* ---------- 7. Session Local Persistence ---------- */
@@ -877,12 +1369,13 @@
         if (tid === "m_fluke") return;
         ratingsObj[tid] = Array.from(m.values());
       });
+      const customThemesObj = Object.fromEntries(state.customThemeTitles.entries());
       sSet(
         storageKeyForSession(state.sessionId),
         JSON.stringify({
           words: wordsObj,
           ratings: ratingsObj,
-          picked: Array.from(state.pickedUids).filter((u) => u !== "m_fluke")
+          customThemes: customThemesObj
         })
       );
     } catch (_) {}
@@ -891,7 +1384,7 @@
   function loadSessionStore(sessId) {
     state.wordsByTarget.clear();
     state.ratingsByTarget.clear();
-    state.pickedUids.clear();
+    state.customThemeTitles.clear();
     try {
       const raw = sGet(storageKeyForSession(sessId), "");
       if (!raw) return;
@@ -916,9 +1409,9 @@
           state.ratingsByTarget.set(tid, mp);
         });
       }
-      if (parsed && Array.isArray(parsed.picked)) {
-        parsed.picked.forEach((u) => {
-          if (MEMBER_MAP.has(u)) state.pickedUids.add(u);
+      if (parsed && parsed.customThemes) {
+        Object.keys(parsed.customThemes).forEach((k) => {
+          if (parsed.customThemes[k]) state.customThemeTitles.set(k, parsed.customThemes[k]);
         });
       }
     } catch (_) {}
@@ -926,7 +1419,7 @@
 
   loadSessionStore(state.sessionId);
 
-  /* ---------- 8. Real-Time Forced Sync Engine (MQTT + PeerJS + BroadcastChannel + Storage) ---------- */
+  /* ---------- 8. Real-Time Forced Sync Engine ---------- */
   const seenMsgIds = new Set();
   function rememberMsg(id) {
     if (!id) return false;
@@ -977,7 +1470,6 @@
     }
   }
 
-  /* ONLY Facilitator broadcasts authoritative master_pointer to lock all phones! */
   function broadcastMasterPointer(isHeartbeat) {
     if (state.role !== "facilitator") return;
     if (!isHeartbeat) state.pointerSeq += 1;
@@ -986,7 +1478,7 @@
       fromFacilitator: true,
       isHeartbeat: Boolean(isHeartbeat),
       sessionId: state.sessionId,
-      view: state.view, // "lobby" | "overview" | "detail"
+      view: state.view,
       targetId: state.activeTargetId,
       detailTab: state.detailTab,
       hideWords: state.hideWordsUntilReveal,
@@ -1015,7 +1507,7 @@
           type: "snapshot",
           words: wordsCompact,
           ratings: ratingsCompact,
-          picked: Array.from(state.pickedUids)
+          customThemes: Object.fromEntries(state.customThemeTitles.entries())
         },
         true
       );
@@ -1062,6 +1554,7 @@
       state.detailTab = nextTab;
       if (targetChanged) {
         state.phoneJustSubmittedTargetId = "";
+        syncDefaultPolarityWithTarget(nextTarget);
       }
       changed = true;
 
@@ -1109,9 +1602,12 @@
         });
       });
     }
-    if (Array.isArray(msg.picked)) {
-      msg.picked.forEach((u) => {
-        if (MEMBER_MAP.has(u)) state.pickedUids.add(u);
+    if (msg.customThemes && typeof msg.customThemes === "object") {
+      Object.keys(msg.customThemes).forEach((k) => {
+        if (msg.customThemes[k] && state.customThemeTitles.get(k) !== msg.customThemes[k]) {
+          state.customThemeTitles.set(k, msg.customThemes[k]);
+          changed = true;
+        }
       });
     }
     if (changed) saveSessionStore();
@@ -1123,11 +1619,8 @@
     if (msg.senderCli === cliId) return;
     if (rememberMsg(msg.msgId)) return;
 
-    // 1. Authoritative Facilitator Pointer -> Locks all Participant Phones (and Explorers with followHost=true)
     if (msg.type === "master_pointer" && msg.fromFacilitator) {
-      if (isRetained && msg.sentMs && Date.now() - msg.sentMs > 6 * 3600 * 1000) {
-        return;
-      }
+      if (isRetained && msg.sentMs && Date.now() - msg.sentMs > 6 * 3600 * 1000) return;
       if (state.role === "participant") {
         applyMasterPointerToPhone(msg, false);
       } else if (state.role === "explorer" && state.followHost) {
@@ -1149,7 +1642,6 @@
       return;
     }
 
-    // 2. Global Presence Check-In (Updates Slide 1 Check-In Wall live!)
     if (msg.type === "presence") {
       if (msg.pid && msg.nick) {
         const hadUid = Array.from(state.presence.values()).some((p) => p.memberUid && p.memberUid === msg.memberUid);
@@ -1172,7 +1664,6 @@
       return;
     }
 
-    // 3. Hello Request -> Facilitator immediately answers with master_pointer + snapshot!
     if (msg.type === "hello_request" && !isRetained) {
       if (state.role === "facilitator") {
         broadcastMasterPointer(true);
@@ -1192,6 +1683,16 @@
       return;
     }
 
+    if (msg.type === "theme_rename") {
+      if (msg.clusterKey) {
+        if (msg.newTitle) state.customThemeTitles.set(msg.clusterKey, msg.newTitle);
+        else state.customThemeTitles.delete(msg.clusterKey);
+        saveSessionStore();
+        renderPreservingFocus();
+      }
+      return;
+    }
+
     if (msg.type === "word_add") {
       const tid = String(msg.targetId || "");
       const item = msg.item;
@@ -1201,11 +1702,16 @@
       if (!mp.has(item.subId)) {
         mp.set(item.subId, item);
         saveSessionStore();
-        if (!isRetained && state.role !== "participant" && state.view === "detail" && state.activeTargetId === tid) {
+        if (
+          !isRetained &&
+          state.role !== "participant" &&
+          state.view === "detail" &&
+          (state.activeTargetId === tid ||
+            (state.activeTargetId === TOPIC_HF_BOARD_ID && (tid === TOPIC_HOPES_ID || tid === TOPIC_FEARS_ID)))
+        ) {
           playChime([587.33, 880], 0.09, "sine", 0.04);
         }
-        // On student phone, don't interrupt active typing when classmates submit words
-        if (state.role !== "participant" || state.phoneJustSubmittedTargetId === tid) {
+        if (state.role !== "participant" || state.phoneJustSubmittedTargetId) {
           renderPreservingFocus();
         }
       }
@@ -1227,12 +1733,15 @@
 
     if (msg.type === "clear_target") {
       const tid = String(msg.targetId || "");
-      if (tid) {
+      if (tid === TOPIC_HF_BOARD_ID) {
+        state.wordsByTarget.delete(TOPIC_HOPES_ID);
+        state.wordsByTarget.delete(TOPIC_FEARS_ID);
+      } else if (tid) {
         state.wordsByTarget.delete(tid);
         state.ratingsByTarget.delete(tid);
-        saveSessionStore();
-        renderPreservingFocus();
       }
+      saveSessionStore();
+      renderPreservingFocus();
       return;
     }
 
@@ -1248,7 +1757,6 @@
   }
 
   function initTransports() {
-    // A. Same-Browser Instant Sync (BroadcastChannel + storage event)
     if (typeof BroadcastChannel !== "undefined") {
       try {
         state.bc = new BroadcastChannel(BC_NAME);
@@ -1269,7 +1777,6 @@
       }
     });
 
-    // B. Dual MQTT over WSS Brokers
     if (window.mqtt && typeof window.mqtt.connect === "function") {
       BROKERS.forEach((url) => {
         try {
@@ -1309,7 +1816,6 @@
       });
     }
 
-    // C. PeerJS WebRTC Direct Facilitator-to-Phones Mesh Backup
     if (typeof window.Peer === "function") {
       try {
         if (state.role === "facilitator") {
@@ -1322,7 +1828,6 @@
           peer.on("connection", (conn) => {
             state.peerConns.set(conn.peer, conn);
             conn.on("open", () => {
-              // Immediately sync newly connected phone to Facilitator's current slide!
               conn.send({
                 topicSuffix: "master/pointer",
                 msg: {
@@ -1343,7 +1848,6 @@
             conn.on("data", (env) => {
               if (env && env.msg) {
                 handleIncoming(env.topicSuffix || "", env.msg, false);
-                // Relay student submission to all other PeerJS-connected phones
                 state.peerConns.forEach((other, pidKey) => {
                   if (pidKey !== conn.peer && other && other.open) {
                     try {
@@ -1389,7 +1893,6 @@
       } catch (_) {}
     }
 
-    // D. Facilitator 3.5s Heartbeat + Participant Presence Heartbeat
     if (state.role === "facilitator") {
       setInterval(() => broadcastMasterPointer(true), 3500);
     }
@@ -1398,8 +1901,18 @@
     }, 12000);
   }
 
-  /* ---------- 9. Viewport-Adaptive Word Cloud Spiral Engine ---------- */
+  /* ---------- 9. Word Aggregation & Word Cloud Spiral Engine ---------- */
   function getAggregatedWords(targetId) {
+    if (targetId === TOPIC_HF_BOARD_ID) {
+      const h = getAggregatedWords(TOPIC_HOPES_ID);
+      const f = getAggregatedWords(TOPIC_FEARS_ID);
+      return {
+        items: h.items.concat(f.items),
+        uniqueRespondents: Math.max(h.uniqueRespondents, f.uniqueRespondents),
+        totalSubmissions: h.totalSubmissions + f.totalSubmissions
+      };
+    }
+
     const mp = state.wordsByTarget.get(targetId);
     if (!mp || mp.size === 0) return { items: [], uniqueRespondents: 0, totalSubmissions: 0 };
 
@@ -1438,6 +1951,11 @@
   }
 
   function getMySentWordsForTarget(targetId) {
+    if (targetId === TOPIC_HF_BOARD_ID) {
+      return getMySentWordsForTarget(TOPIC_HOPES_ID)
+        .map((t) => `🌱 ${t}`)
+        .concat(getMySentWordsForTarget(TOPIC_FEARS_ID).map((t) => `🌸 ${t}`));
+    }
     const mp = state.wordsByTarget.get(targetId);
     if (!mp) return [];
     return Array.from(mp.values())
@@ -1445,45 +1963,45 @@
       .map((w) => w.text);
   }
 
-  function computeAdaptiveWordCloud(items) {
+  function computeAdaptiveWordCloud(items, isCompactPane) {
     if (!items.length) return [];
     const vw = window.innerWidth || 1280;
     const vh = window.innerHeight || 720;
-    const isPortrait = vw < vh;
-    const isCompact = vw <= 640;
+    const isPortrait = vw < vh || Boolean(isCompactPane);
+    const isSmall = vw <= 640 || Boolean(isCompactPane);
 
-    const W = isPortrait ? 680 : 1120;
-    const H = isPortrait ? 760 : 540;
+    const W = isPortrait ? 640 : 1100;
+    const H = isPortrait ? 640 : 520;
     const cx = W / 2;
     const cy = H / 2;
     const maxCount = Math.max(1, ...items.map((x) => x.count));
     const placed = [];
 
-    const baseMin = isCompact ? 18 : 26;
-    const baseRange = isCompact ? 28 : 52;
+    const baseMin = isSmall ? 17 : 25;
+    const baseRange = isSmall ? 24 : 48;
 
-    return items.slice(0, 48).map((item, idx) => {
-      const ratio = maxCount === 1 ? (idx === 0 ? 0.78 : 0.4) : (item.count - 1) / Math.max(1, maxCount - 1);
+    return items.slice(0, 44).map((item, idx) => {
+      const ratio = maxCount === 1 ? (idx === 0 ? 0.72 : 0.36) : (item.count - 1) / Math.max(1, maxCount - 1);
       let fontPx = Math.round(baseMin + ratio * baseRange);
-      if (items.length > 22) fontPx = Math.round(fontPx * 0.86);
-      if (item.emojiOnly) fontPx = Math.round(fontPx * 1.32);
+      if (items.length > 18) fontPx = Math.round(fontPx * 0.85);
+      if (item.emojiOnly) fontPx = Math.round(fontPx * 1.28);
 
-      const charUnit = item.emojiOnly ? fontPx * 1.15 : fontPx * 0.57;
-      const boxW = Math.min(W * 0.84, Math.max(fontPx * 1.2, item.text.length * charUnit + 24));
-      const boxH = fontPx * 1.3 + 8;
+      const charUnit = item.emojiOnly ? fontPx * 1.12 : fontPx * 0.56;
+      const boxW = Math.min(W * 0.86, Math.max(fontPx * 1.2, item.text.length * charUnit + 20));
+      const boxH = fontPx * 1.28 + 6;
 
       let bestX = cx;
       let bestY = cy;
-      const spreadX = isPortrait ? 0.96 : 1.48;
-      const spreadY = isPortrait ? 1.22 : 0.85;
+      const spreadX = isPortrait ? 1.02 : 1.46;
+      const spreadY = isPortrait ? 1.08 : 0.85;
 
-      for (let step = 0; step < 560; step += 1) {
-        const angle = step * 0.41 + idx * 0.83;
-        const radius = step * 3.0;
+      for (let step = 0; step < 520; step += 1) {
+        const angle = step * 0.42 + idx * 0.83;
+        const radius = step * 2.9;
         const tx = cx + Math.cos(angle) * radius * spreadX;
         const ty = cy + Math.sin(angle) * radius * spreadY;
 
-        if (tx - boxW / 2 < 20 || tx + boxW / 2 > W - 20 || ty - boxH / 2 < 18 || ty + boxH / 2 > H - 18) {
+        if (tx - boxW / 2 < 18 || tx + boxW / 2 > W - 18 || ty - boxH / 2 < 16 || ty + boxH / 2 > H - 16) {
           continue;
         }
         let collides = false;
@@ -1511,10 +2029,16 @@
     });
   }
 
-  /* ---------- 10. Submit Word(s) & Rating ---------- */
+  /* ---------- 10. Submit Post-it / Word(s) & Rating ---------- */
   function submitSingleWordPacket(targetId, rawText) {
-    const cleaned = String(rawText || "").trim().replace(/\s+/g, " ").slice(0, 54);
+    const cleaned = String(rawText || "").trim().replace(/\s+/g, " ").slice(0, 72);
     if (!cleaned || !targetId || !TARGET_MAP.has(targetId)) return false;
+
+    // Self-slide lock: logged-in member cannot submit words about themselves!
+    const tObj = TARGET_MAP.get(targetId);
+    if (tObj && tObj.member && state.myMemberUid && state.myMemberUid === tObj.member.uid) {
+      return false;
+    }
 
     const mem = MEMBER_MAP.get(state.myMemberUid);
     const entry = {
@@ -1571,6 +2095,21 @@
     renderPreservingFocus();
   }
 
+  function applyIdentityLogin(memberObj) {
+    if (!memberObj) return;
+    state.myMemberUid = memberObj.uid;
+    state.myGuestName = "";
+    state.pinDraft = "";
+    state.pinError = "";
+    sSet("kuchi2569_my_uid", memberObj.uid);
+    sSet("kuchi2569_guest_name", "");
+    state.identityModalOpen = false;
+    state.phonePickingIdentity = false;
+    playChime([523.25, 659.25, 783.99], 0.09, "triangle", 0.05);
+    publishMyPresence();
+    render();
+  }
+
   function loadLegacyDemoForSmart() {
     const tid = "m_smart";
     if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
@@ -1594,7 +2133,323 @@
     renderPreservingFocus();
   }
 
-  /* ---------- 11. Render Views (Facilitator Lobby, 21-Card Overview, Zoom Stage, Student Phone) ---------- */
+  function loadHopesFearsDemo(mode) {
+    if (mode === "hopes" || mode === "both") {
+      if (!state.wordsByTarget.has(TOPIC_HOPES_ID)) state.wordsByTarget.set(TOPIC_HOPES_ID, new Map());
+      const mpH = state.wordsByTarget.get(TOPIC_HOPES_ID);
+      DEMO_HOPES_SAMPLES.forEach((txt, idx) => {
+        const sid = `demo_h_${idx}`;
+        mpH.set(sid, { subId: sid, text: txt, pid: `demo_p_${idx}`, memberUid: "", nick: "ตัวอย่าง", ts: Date.now() });
+      });
+    }
+    if (mode === "fears" || mode === "both") {
+      if (!state.wordsByTarget.has(TOPIC_FEARS_ID)) state.wordsByTarget.set(TOPIC_FEARS_ID, new Map());
+      const mpF = state.wordsByTarget.get(TOPIC_FEARS_ID);
+      DEMO_FEARS_SAMPLES.forEach((txt, idx) => {
+        const sid = `demo_f_${idx}`;
+        mpF.set(sid, { subId: sid, text: txt, pid: `demo_p_${idx}`, memberUid: "", nick: "ตัวอย่าง", ts: Date.now() });
+      });
+    }
+    saveSessionStore();
+    scheduleSnapshotPublish();
+    playChime([523.25, 659.25, 783.99], 0.11, "triangle", 0.05);
+    renderPreservingFocus();
+  }
+
+  /* ---------- 11. Reusable 3-Digit Student ID Login & Affinity Post-it Renderers ---------- */
+  function renderPin3LoginWidgetHtml() {
+    const matched = matchMemberByCode(state.pinDraft);
+    return `
+      <form data-form="pin3-login" class="pin3-box">
+        <div style="font-size:15px;font-weight:800;color:#1e3a8a">
+          🔢 กรอกรหัส นศพ. 3 ตัวท้ายของคุณ (เช่น 006, 035, 166)
+        </div>
+        <input
+          type="text"
+          id="pin3Input"
+          name="pin3"
+          class="pin3-input"
+          inputmode="numeric"
+          autocomplete="off"
+          maxlength="7"
+          placeholder="006"
+          value="${esc(state.pinDraft)}"
+        />
+        <div id="pin3LivePreview" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px">
+          ${renderPin3PreviewInnerHtml(matched)}
+        </div>
+
+        <div style="width:100%;border-top:1px dashed #cbd5e1;padding-top:12px;margin-top:4px;display:flex;flex-direction:column;gap:8px;align-items:center">
+          <button
+            type="button"
+            class="tv-pill-btn"
+            style="height:40px;padding:0 18px;background:#ffffff;border-color:#93c5fd;color:#1d4ed8"
+            data-act="select-identity"
+            data-uid="m_smart"
+          >
+            👨‍⚕️ สำหรับอาจารย์: เข้าสู่ระบบในชื่อ 'พี่สมาร์ท (ณัฐวุฒิ)'
+          </button>
+
+          <button type="button" class="tv-pill-btn" style="height:32px;font-size:12px;color:#64748b" data-act="toggle-all-names">
+            ${state.showAllNamesFallback ? "▲ ซ่อนรายชื่อทั้งหมด" : "จำรหัสไม่ได้? แตะเลือกรูปจากรายชื่อทั้ง 21 คน"}
+          </button>
+        </div>
+      </form>
+
+      ${
+        state.showAllNamesFallback
+          ? `
+            <div style="margin-top:10px">
+              <div class="id-picker-grid">
+                ${MEMBERS.map(
+                  (m) => `
+                    <button
+                      type="button"
+                      class="id-picker-card${state.myMemberUid === m.uid ? " is-selected" : ""}"
+                      data-act="select-identity"
+                      data-uid="${esc(m.uid)}"
+                    >
+                      <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
+                      <strong>${esc(m.nickname)}</strong>
+                      <span>${esc(m.kind === "student" ? m.shortNo : "อาจารย์")}</span>
+                    </button>
+                  `
+                ).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    `;
+  }
+
+  function renderPin3PreviewInnerHtml(matched) {
+    if (matched) {
+      return `
+        <div class="pin3-preview-card">
+          <img src="${esc(matched.photo)}" alt="${esc(matched.nickname)}" />
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11.5px;font-weight:800;color:#059669">✓ พบรหัสของคุณในกลุ่มกุฉินารายณ์</div>
+            <div style="font-size:18px;font-weight:800;color:#0f172a">${esc(matched.mentiName)}</div>
+            <div style="font-size:12.5px;color:#475569">${esc(matched.fullName)}${matched.kind === "student" ? ` (${esc(matched.id)})` : ""}</div>
+          </div>
+        </div>
+        <button type="submit" class="ph-submit-btn" style="max-width:420px">
+          🚀 เข้าสู่ระบบในชื่อ '${esc(matched.nickname)}'
+        </button>
+      `;
+    }
+    if (state.pinError) {
+      return `<div style="font-size:13.5px;font-weight:700;color:#dc2626">${esc(state.pinError)}</div>`;
+    }
+    return `
+      <button type="submit" class="ph-submit-btn" style="max-width:340px;height:46px;font-size:15.5px">
+        ยืนยันรหัสเข้าห้องสด →
+      </button>
+    `;
+  }
+
+  function renderAffinityClusterCardHtml(cluster) {
+    const isHopes = cluster.polarity === "hopes";
+    const postitLabel = isHopes ? "Hope" : "Fear";
+    return `
+      <article class="aff-cluster-card ${isHopes ? "is-hopes" : "is-fears"}">
+        <div class="aff-cluster-top">
+          <h3 class="aff-cluster-title">
+            <span>${cluster.icon}</span> ${esc(cluster.title)}
+            <button
+              type="button"
+              style="border:none;background:transparent;cursor:pointer;font-size:12px;opacity:0.55;padding:0 3px"
+              data-act="rename-theme"
+              data-cluster-key="${esc(cluster.clusterKey)}"
+              data-cur-title="${esc(cluster.title)}"
+              title="ปรับแก้ชื่อ Emerging Theme นี้ร่วมกันในห้อง"
+            >✏️</button>
+          </h3>
+          <span class="aff-cluster-count">${cluster.voteSum} แผ่น · ${cluster.pct}%</span>
+        </div>
+        <div class="aff-cluster-concept">${esc(cluster.concept)}</div>
+        <div class="aff-notes-wrap">
+          ${cluster.notes
+            .map(
+              (n) => `
+                <div class="aff-sticky-note ${isHopes ? "is-hopes" : "is-fears"}">
+                  <div class="postit-kicker-row">
+                    <span class="postit-kicker-tag">${postitLabel}</span>
+                    ${n.count > 1 ? `<span>×${n.count}</span>` : ""}
+                  </div>
+                  <div class="postit-text">${esc(n.text)}</div>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderThematicAffinityBodyHtml(tObj) {
+    const hopesAgg = getAggregatedWords(TOPIC_HOPES_ID);
+    const fearsAgg = getAggregatedWords(TOPIC_FEARS_ID);
+
+    if (state.hideWordsUntilReveal) {
+      const cnt =
+        tObj.id === TOPIC_HOPES_ID
+          ? hopesAgg.totalSubmissions
+          : tObj.id === TOPIC_FEARS_ID
+          ? fearsAgg.totalSubmissions
+          : hopesAgg.totalSubmissions + fearsAgg.totalSubmissions;
+      return `
+        <div class="zm-cloud-body">
+          <div class="zm-empty-prompt">
+            <strong>🙈 ซ่อน Post-it ไว้รอแลกเปลี่ยนพร้อมกัน (${cnt} แผ่น)</strong>
+            <p>เมื่อทุกคนแปะ Post-it ความหวัง/ความกังวลครบแล้ว กดปุ่มด้านล่างเพื่อแสดงการจัดกลุ่ม Emerging Themes!</p>
+            <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">
+              ✨ เปิดบอร์ด Post-it &amp; Emerging Themes!
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Slide 4: Combined Side-by-Side Hopes (เขียวอ่อน) & Fears (ชมพูอ่อน) Conceptualization Wall
+    if (tObj.id === TOPIC_HF_BOARD_ID) {
+      const hSyn = synthesizeDynamicThemes(hopesAgg.items, "hopes");
+      const fSyn = synthesizeDynamicThemes(fearsAgg.items, "fears");
+
+      return `
+        <div class="zm-thematic-stage">
+          <div class="aff-synth-banner">
+            <div>
+              <strong>🧠 Conceptualization Summary:</strong>
+              ${
+                hSyn.totalVotes + fSyn.totalVotes > 0
+                  ? `Hopes ${hSyn.totalVotes} แผ่น (${hSyn.clusters.length} ธีม) · Fears ${fSyn.totalVotes} แผ่น (${fSyn.clusters.length} ธีม) — ชื่อ Emerging Theme ปรับเปลี่ยนอัตโนมัติตามข้อมูลใหม่ และกด ✏️ เพื่อปรับชื่อร่วมกันได้`
+                  : "พิมพ์ข้อความด้านล่างแล้วเลือก 🌱 Hope (โพสต์อิทเขียวอ่อน) หรือ 🌸 Fear (โพสต์อิทชมพูอ่อน) เพื่อจัดกลุ่มเข้า Emerging Theme อัตโนมัติ"
+              }
+            </div>
+            ${
+              hSyn.totalVotes + fSyn.totalVotes === 0
+                ? `<button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="both">✨ ทดลองโหลดตัวอย่าง Post-it</button>`
+                : ""
+            }
+          </div>
+
+          <div class="aff-dual-wall">
+            <section class="aff-wall-col is-hopes">
+              <div class="aff-wall-col-head" style="color:#14532d">
+                <span>🌱 Hopes · ความหวัง (Post-it เขียวอ่อน)</span>
+                <span style="font-size:13px;padding:3px 10px;border-radius:999px;background:#d9f99d;border:1px solid #84cc16">
+                  ${hSyn.clusters.length} Emerging Themes · ${hSyn.totalVotes} แผ่น
+                </span>
+              </div>
+              ${
+                hSyn.clusters.length
+                  ? `<div class="aff-clusters-grid">${hSyn.clusters.map(renderAffinityClusterCardHtml).join("")}</div>`
+                  : `<div style="padding:26px 14px;text-align:center;color:#166534;font-size:14px">ยังไม่มี Post-it ความหวัง — พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌱 Hope</strong> ได้เลย</div>`
+              }
+            </section>
+
+            <section class="aff-wall-col is-fears">
+              <div class="aff-wall-col-head" style="color:#831843">
+                <span>🌸 Fears · ความกังวล (Post-it ชมพูอ่อน)</span>
+                <span style="font-size:13px;padding:3px 10px;border-radius:999px;background:#fbcfe8;border:1px solid #f472b6">
+                  ${fSyn.clusters.length} Emerging Themes · ${fSyn.totalVotes} แผ่น
+                </span>
+              </div>
+              ${
+                fSyn.clusters.length
+                  ? `<div class="aff-clusters-grid">${fSyn.clusters.map(renderAffinityClusterCardHtml).join("")}</div>`
+                  : `<div style="padding:26px 14px;text-align:center;color:#9f1239;font-size:14px">ยังไม่มี Post-it ความกังวล — พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌸 Fear</strong> ได้เลย</div>`
+              }
+            </section>
+          </div>
+        </div>
+      `;
+    }
+
+    // Slide 2 (HOPES) or Slide 3 (FEARS): Dynamic Thematic Affinity + Word Cloud
+    const pol = tObj.id === TOPIC_FEARS_ID ? "fears" : "hopes";
+    const curAgg = pol === "fears" ? fearsAgg : hopesAgg;
+    const syn = synthesizeDynamicThemes(curAgg.items, pol);
+
+    if (!curAgg.items.length) {
+      return `
+        <div class="zm-cloud-body">
+          <div class="zm-empty-prompt" style="border-color:${pol === "fears" ? "#f9a8d4" : "#a3e635"};background:${pol === "fears" ? "#fdf2f8" : "#f7fee7"}">
+            <strong>${pol === "fears" ? "🌸 ส่งความกังวล (FEARS) ขึ้นเป็น Post-it สีชมพูอ่อนกันเลย!" : "🌱 ส่งความหวัง (HOPES) ขึ้นเป็น Post-it สีเขียวอ่อนกันเลย!"}</strong>
+            <p>พิมพ์ข้อความแล้วเลือก <strong>${pol === "fears" ? "🌸 Fear" : "🌱 Hope"}</strong> — ระบบจะสร้างทั้ง <strong>Word Cloud</strong> และจัดกลุ่ม <strong>Emerging Themes (Affinity Diagram)</strong> ให้อัตโนมัติแบบเรียลไทม์!</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
+              <button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="${pol}">✨ ทดลองโหลดตัวอย่าง ${pol === "fears" ? "FEARS" : "HOPES"}</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const cloudPositioned = computeAdaptiveWordCloud(curAgg.items, state.hfDisplayMode === "split");
+    const cloudCanvasHtml = `
+      <div class="zm-cloud-canvas">
+        ${cloudPositioned
+          .map(
+            (w, idx) => `
+              <span
+                class="menti-word-item"
+                style="left:${w.leftPct}%;top:${w.topPct}%;font-size:${w.fontPx}px;color:${w.color};z-index:${50 - idx}"
+                title="${esc(w.text)} (${w.count} ครั้ง)"
+                data-act="open-results"
+                data-target-id="${esc(tObj.id)}"
+              >${esc(w.text)}${w.count > 1 ? `<sup class="menti-word-sup">×${w.count}</sup>` : ""}</span>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+
+    if (state.hfDisplayMode === "cloud") {
+      return `<div class="zm-cloud-body">${cloudCanvasHtml}</div>`;
+    }
+
+    if (state.hfDisplayMode === "affinity") {
+      return `
+        <div class="zm-thematic-stage">
+          <div class="aff-synth-banner">
+            <span>🧠 <strong>Dynamic Thematic Synthesis:</strong> ${esc(syn.summaryLine)}</span>
+          </div>
+          <div class="aff-clusters-grid">
+            ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // Default "split": Left = Post-it Affinity Diagram (Emerging Themes), Right = Live Word Cloud
+    return `
+      <div class="zm-thematic-stage">
+        <div class="aff-synth-banner">
+          <span>🧠 <strong>Thematic Analysis from Word Cloud:</strong> ${esc(syn.summaryLine)}</span>
+          <span style="font-size:12px;color:#64748b">กด ✏️ บนหัวกลุ่มเพื่อปรับชื่อ Emerging Theme ได้สดๆ</span>
+        </div>
+        <div class="zm-split-thematic">
+          <div class="aff-clusters-grid">
+            ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+          </div>
+          <div class="zm-split-cloud-pane">
+            <div class="zm-split-cloud-label">
+              <span>☁️ Word Cloud ต้นทาง (${curAgg.totalSubmissions} คำ)</span>
+              <button type="button" class="tv-pill-btn" style="height:24px;font-size:11px;padding:0 8px" data-act="set-hf-display" data-mode="cloud">ขยายเต็มจอ</button>
+            </div>
+            <div style="flex:1;position:relative;min-height:200px">
+              ${cloudCanvasHtml}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ---------- 12. Render Top Bar, Lobby, Overview, Detail Stage & Phone ---------- */
   function renderUniversalNavClusterHtml(showOverviewBtn) {
     const mainHomeUrl = resolveMainPortalUrl();
     return `
@@ -1616,33 +2471,16 @@
     `;
   }
 
-  function renderIdentityGridCardsHtml() {
-    return `
-      <div class="id-picker-grid">
-        ${MEMBERS.map(
-          (m) => `
-            <button
-              type="button"
-              class="id-picker-card${state.myMemberUid === m.uid ? " is-selected" : ""}"
-              data-act="select-identity"
-              data-uid="${esc(m.uid)}"
-            >
-              <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
-              <strong>${esc(m.nickname)}</strong>
-              <span>${esc(m.kind === "student" ? `${m.firstName} · ${m.shortNo}` : "อาจารย์ที่ปรึกษา")}</span>
-            </button>
-          `
-        ).join("")}
-      </div>
-    `;
-  }
-
-  /* --- A. Top Bar for Facilitator & Explorer --- */
   function renderTopBarHtml() {
     const isFac = state.role === "facilitator";
     const myMem = MEMBER_MAP.get(state.myMemberUid);
-    const myLabel = myMem ? myMem.nickname : state.myGuestName || "เลือกชื่อ";
+    const myLabel = myMem
+      ? `${myMem.nickname}${myMem.kind === "student" ? ` (${myMem.shortNo})` : ""}`
+      : state.myGuestName || "Login รหัส 3 ตัว";
     const onlineMembers = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
+    const isOnHopes = state.view === "detail" && state.activeTargetId === TOPIC_HOPES_ID;
+    const isOnFears = state.view === "detail" && state.activeTargetId === TOPIC_FEARS_ID;
+    const isOnHfBoard = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID;
 
     return `
       <div class="tv-topbar-wrap">
@@ -1653,7 +2491,7 @@
               <span class="tv-logo-badge${isFac ? " is-fac" : ""}">${isFac ? "FAC" : "KG"}</span>
               <span class="tv-brand-titles">
                 <span class="tv-brand-main">${isFac ? "Facilitator จอใหญ่ · Kuchi Gang 2569" : "Kuchi Gang 2569 · รพร.กุฉินารายณ์ (21 คน)"}</span>
-                <span class="tv-brand-sub">${isFac ? "บังคับซิงค์มือถือผู้เรียนทุกเครื่องตามจอใหญ่อัตโนมัติ (Mentimeter Mode)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
+                <span class="tv-brand-sub">${isFac ? "Slide 1 QR → HOPES → FEARS → Affinity Board → 21 คน (กด Clicker ซ้าย/ขวา)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
               </span>
             </button>
           </div>
@@ -1668,44 +2506,62 @@
             ${
               isFac
                 ? `
-                  <button type="button" class="tv-pill-btn ${state.view === "lobby" ? "is-primary" : ""}" data-act="go-lobby" title="กลับไป Slide 1 หน้าสแกน QR Code เต็มจอ">
-                    📱 <span>Slide 1: QR (${onlineMembers.size}/21)</span>
+                  <button type="button" class="tv-pill-btn ${state.view === "lobby" ? "is-primary" : ""}" data-act="go-lobby" title="Slide 1 หน้าสแกน QR Code">
+                    📱 <span>QR (${onlineMembers.size}/21)</span>
                   </button>
                 `
                 : `
-                  <a class="tv-pill-btn is-facilitator" href="${esc(getFacilitatorUrl())}" title="เปิดลิงก์ Facilitator สำหรับคุมจอใหญ่และบังคับมือถือวิ่งตามพร้อมกัน">
-                    🎛️ <span>โหมด Facilitator (จอใหญ่)</span>
+                  <a class="tv-pill-btn is-facilitator" href="${esc(getFacilitatorUrl())}" title="เปิดลิงก์ Facilitator สำหรับคุมจอใหญ่">
+                    🎛️ <span>Facilitator</span>
                   </a>
                 `
             }
 
-            <button type="button" class="tv-pill-btn is-roulette" data-act="spin-roulette" title="สุ่มการ์ดแนะนำตัวแบบ Apple TV (คีย์ลัด R)">
-              🎲 <span>สุ่มคนถัดไป</span>
+            <button
+              type="button"
+              class="tv-pill-btn ${isOnHopes ? "is-primary" : ""}"
+              style="${!isOnHopes ? "background:#f7fee7;border-color:#a3e635;color:#14532d" : ""}"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_HOPES_ID}"
+              title="Slide 2: HOPES (Post-it เขียวอ่อน)"
+            >
+              🌱 <span>HOPES</span>
             </button>
 
-            ${
-              !isFac
-                ? `
-                  <button type="button" class="tv-pill-btn" data-act="open-identity" title="เลือกชื่อของคุณในกลุ่มกุฉินารายณ์">
-                    👤 <span>${esc(myLabel)}</span>
-                  </button>
-                  <button type="button" class="tv-pill-btn is-primary" data-act="open-qr" title="แสดง QR Code เข้าโหมดมือถือ Full Type-Answer">
-                    📱 <span>QR มือถือ</span>
-                  </button>
-                `
-                : `
-                  <button type="button" class="tv-pill-btn" data-act="open-qr" title="แสดงป๊อปอัป QR Code สำหรับคนมาทีหลัง">
-                    📱 <span>QR ด่วน</span>
-                  </button>
-                `
-            }
+            <button
+              type="button"
+              class="tv-pill-btn ${isOnFears ? "is-primary" : ""}"
+              style="${!isOnFears ? "background:#fdf2f8;border-color:#f9a8d4;color:#831843" : ""}"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_FEARS_ID}"
+              title="Slide 3: FEARS (Post-it ชมพูอ่อน)"
+            >
+              🌸 <span>FEARS</span>
+            </button>
+
+            <button
+              type="button"
+              class="tv-pill-btn ${isOnHfBoard ? "is-primary" : ""} hide-mobile"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_HF_BOARD_ID}"
+              title="Slide 4: บอร์ดรวม Hopes & Fears Affinity Conceptualization"
+            >
+              📌 <span>Affinity รวม</span>
+            </button>
+
+            <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀</button>
+            <button type="button" class="tv-pill-btn is-primary" data-act="clicker-next" title="สไลด์ถัดไป (PageDown / →)">ถัดไป ▶</button>
+
+            <button type="button" class="tv-pill-btn" data-act="open-identity" title="ยืนยันตัวตนด้วยรหัส นศพ. 3 ตัวท้าย">
+              👤 <span>${esc(myLabel)}</span>
+            </button>
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="open-roadmap" title="แผนการเดินทางรถไฟ 10–19 ธ.ค. & 5 วัตถุประสงค์">
               🗺️ <span>ภารกิจ</span>
             </button>
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="print-overview" title="พิมพ์สมุดที่ระลึก 21 คน / บันทึกเป็น PDF">
-              🖨️ <span>PDF</span>
+              🖨️
             </button>
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="toggle-fullscreen" title="เต็มจอ 16:9 (คีย์ลัด F)">
@@ -1714,7 +2570,7 @@
 
             <span class="tv-live-chip ${state.connectedCount > 0 ? "" : "is-offline"}" id="tvConnBadge" data-act="open-qr">
               <span class="tv-live-dot"></span>
-              <span>${state.connectedCount > 0 ? "Live Sync" : "Local"}</span>
+              <span>${state.connectedCount > 0 ? "Live" : "Local"}</span>
             </span>
           </div>
         </header>
@@ -1722,7 +2578,7 @@
     `;
   }
 
-  /* --- B. Slide 1: Facilitator Giant QR Lobby + 21-Member Live Check-In Wall --- */
+  /* --- Slide 1: Facilitator Giant QR Lobby --- */
   function renderFacilitatorLobbyHtml() {
     const joinUrl = getJoinUrl();
     const onlineUidSet = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
@@ -1743,7 +2599,7 @@
             <div class="fac-qr-giant">
               ${buildQrSvg(joinUrl)}
             </div>
-            <div style="font-size:14px;font-weight:800;color:#0f172a">สแกนด้วยกล้องมือถือ / iPad เพื่อเข้าโหมดพิมพ์คำตอบเต็มจอ</div>
+            <div style="font-size:13.5px;font-weight:800;color:#0f172a">สแกน QR แล้วกรอกรหัส นศพ. 3 ตัวท้ายเพื่อเข้าห้องสด</div>
             <div class="fac-url-pill">
               <span style="flex:1">${esc(joinUrl)}</span>
               <button type="button" class="tv-pill-btn" style="height:28px;font-size:11.5px;padding:0 10px" data-act="copy-url">คัดลอก</button>
@@ -1754,21 +2610,21 @@
             <div>
               <h1 class="fac-lobby-title">ครอบครัวกุฉินารายณ์ · Kuchi Gang 2569 🚂</h1>
               <p class="fac-lobby-sub">
-                เมื่อทุกคนสแกน QR Code แล้ว มือถือทุกเครื่องจะเข้าสู่โหมด <strong>Full Type-Answer เต็มตัว</strong> และ<strong>เปลี่ยนโจทย์ตามหน้าจอใหญ่นี้พร้อมกันอัตโนมัติ</strong> เพื่อดูผล Word Cloud ร่วมกันบนจอหลัก!
+                สแกน QR Code และยืนยันรหัส นศพ. 3 ตัวท้าย — มือถือทุกเครื่องจะซิงค์ตามจอใหญ่เข้าสู่กิจกรรม <strong>Hopes (Post-it เขียวอ่อน)</strong> &amp; <strong>Fears (Post-it ชมพูอ่อน)</strong> ต่อด้วยการทำความรู้จักสมาชิกทั้ง 21 คน!
               </p>
             </div>
 
             <div class="fac-steps-row">
               <span class="fac-step-chip"><span class="fac-step-num">1</span> สแกน QR ด้านซ้าย</span>
-              <span class="fac-step-chip"><span class="fac-step-num">2</span> แตะรูปชื่อตัวเอง (21 คน)</span>
-              <span class="fac-step-chip"><span class="fac-step-num">3</span> พิมพ์คำตอบบนมือถือ &amp; ดูผลพร้อมกันบนจอใหญ่</span>
+              <span class="fac-step-chip"><span class="fac-step-num">2</span> กรอกรหัส นศพ. 3 ตัวท้าย (เช่น 006)</span>
+              <span class="fac-step-chip"><span class="fac-step-num">3</span> กด Clicker ถัดไปเริ่ม <strong>HOPES &amp; FEARS</strong></span>
             </div>
 
             <div class="fac-checkin-header">
               <span class="fac-checkin-counter">
                 🟢 เช็คอินเข้าห้องแล้ว ${onlineUidSet.size} / ${MEMBERS.length} คน${guestCount > 0 ? ` (+ผู้ร่วมฟัง ${guestCount})` : ""}
               </span>
-              <span style="font-size:12.5px;color:#64748b;font-weight:600">คลิกที่รูปใครก็ได้เพื่อเริ่มถามคนนั้นทันที หรือกดปุ่มด้านล่าง</span>
+              <span style="font-size:12.5px;color:#64748b;font-weight:600">กดปุ่ม Clicker ถัดไป (→ / PageDown) เพื่อไป Slide 2: HOPES</span>
             </div>
 
             <div class="fac-checkin-grid">
@@ -1780,7 +2636,7 @@
                     class="fac-checkin-item${isOn ? " is-online" : ""}"
                     data-act="zoom-in-target"
                     data-target-id="${esc(m.uid)}"
-                    title="${esc(m.fullName)} — คลิกเพื่อเปิดโจทย์ของ ${esc(m.nickname)}"
+                    title="${esc(m.fullName)} (${esc(m.shortNo)})"
                   >
                     ${isOn ? `<span class="fac-ci-tick">✓</span>` : ""}
                     <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="eager" />
@@ -1791,14 +2647,11 @@
             </div>
 
             <div class="fac-cta-row">
-              <button type="button" class="tv-pill-btn is-primary fac-cta-big" data-act="go-overview">
-                ⊞ เปิดภาพรวมทั้ง 21 คน (เริ่มกิจกรรม →)
+              <button type="button" class="tv-pill-btn is-primary fac-cta-big" data-act="clicker-next">
+                🌱 ถัดไป (Slide 2): คำถาม HOPES (Post-it เขียวอ่อน) ▶
               </button>
-              <button type="button" class="tv-pill-btn fac-cta-big" style="border-color:#93c5fd;background:#eff6ff;color:#1d4ed8" data-act="zoom-in-target" data-target-id="m_smart">
-                ▶️ เริ่มโจทย์คนแรก: พี่สมาร์ท
-              </button>
-              <button type="button" class="tv-pill-btn is-roulette fac-cta-big" data-act="spin-roulette">
-                🎲 สุ่มคนแรกทันที
+              <button type="button" class="tv-pill-btn fac-cta-big" style="border-color:#93c5fd;background:#eff6ff;color:#1d4ed8" data-act="go-overview">
+                ⊞ ข้ามไปภาพรวม 21 คน
               </button>
             </div>
           </div>
@@ -1807,10 +2660,12 @@
     `;
   }
 
-  /* --- C. 21-Card Apple TV Overview Grid (7 x 3 on PC 16:9) --- */
+  /* --- Slide 5: 21-Card Apple TV Overview Grid --- */
   function renderOverviewHtml() {
     const onlineUids = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
     const totalWordsAll = Array.from(state.wordsByTarget.values()).reduce((sum, mp) => sum + mp.size, 0);
+    const hopesAgg = getAggregatedWords(TOPIC_HOPES_ID);
+    const fearsAgg = getAggregatedWords(TOPIC_FEARS_ID);
     const topicAgg = getAggregatedWords(TOPIC_TRIP_ID);
 
     return `
@@ -1819,26 +2674,49 @@
           <div class="tv-overview-headline">
             <h1>ภาพรวมครอบครัวกุฉินารายณ์ 2569 (${MEMBERS.length} คน)</h1>
             <span class="tv-overview-hint">
-              ${
-                state.role === "facilitator"
-                  ? "แตะการ์ดคนไหน มือถือทั้งห้องจะเด้งเข้าโหมดพิมพ์คำตอบของคนนั้นพร้อมกันทันที! · กด <strong>Esc</strong> เพื่อซูมออก"
-                  : "แตะการ์ดเพื่อ <strong>Zoom In</strong> เข้าสู่โจทย์ใหญ่สะท้อนตัวตน · กด <strong>Esc</strong> เพื่อซูมออก"
-              }
+              แตะการ์ดสมาชิกเพื่อ <strong>Zoom In</strong> ถามโจทย์สะท้อนตัวตนรายคน · หรือกด Clicker <strong>ถัดไป ▶</strong> เพื่อเรียงตามลำดับ
             </span>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <button
+              type="button"
+              class="tv-pill-btn"
+              style="background:#ecfccb;border-color:#84cc16;color:#14532d"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_HOPES_ID}"
+            >
+              🌱 HOPES${hopesAgg.totalSubmissions > 0 ? ` (${hopesAgg.totalSubmissions})` : ""}
+            </button>
+            <button
+              type="button"
+              class="tv-pill-btn"
+              style="background:#fce7f3;border-color:#f472b6;color:#831843"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_FEARS_ID}"
+            >
+              🌸 FEARS${fearsAgg.totalSubmissions > 0 ? ` (${fearsAgg.totalSubmissions})` : ""}
+            </button>
             <button
               type="button"
               class="tv-pill-btn"
               style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8"
               data-act="zoom-in-target"
+              data-target-id="${TOPIC_HF_BOARD_ID}"
+            >
+              📌 บอร์ดรวม Hopes &amp; Fears
+            </button>
+            <button
+              type="button"
+              class="tv-pill-btn"
+              style="background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6"
+              data-act="zoom-in-target"
               data-target-id="${TOPIC_TRIP_ID}"
               data-tile-id="${TOPIC_TRIP_ID}"
             >
-              🚂 โจทย์ความคาดหวังทริปกุฉินารายณ์${topicAgg.totalSubmissions > 0 ? ` (${topicAgg.totalSubmissions})` : ""}
+              🚂 ทริปกุฉินารายณ์${topicAgg.totalSubmissions > 0 ? ` (${topicAgg.totalSubmissions})` : ""}
             </button>
-            <span style="font-size:13px;font-weight:700;color:#2563eb;background:#ffffff;padding:5px 12px;border-radius:999px;border:1px solid #bfdbfe">
-              ☁️ รวม ${totalWordsAll} คำ
+            <span style="font-size:12.5px;font-weight:700;color:#2563eb;background:#ffffff;padding:5px 11px;border-radius:999px;border:1px solid #bfdbfe">
+              ☁️ รวม ${totalWordsAll} แผ่น/คำ
             </span>
           </div>
         </div>
@@ -1852,8 +2730,8 @@
               .slice(0, 4)
               .map((w) => `${w.text}${w.count > 1 ? ` ×${w.count}` : ""}`)
               .join(" · ");
-            const badgeNum = m.kind === "student" ? `#${m.studentNo}` : "AJ";
-            const subInfo = m.kind === "student" ? `${m.firstName} · ${m.shortNo} (D${m.disc})` : `${m.firstName} · อาจารย์ที่ปรึกษา`;
+            const badgeNum = m.kind === "student" ? m.shortNo : "AJ";
+            const subInfo = m.kind === "student" ? `${m.firstName} · #${m.studentNo} (D${m.disc})` : `${m.firstName} · อาจารย์ที่ปรึกษา`;
             const isOnline = onlineUids.has(m.uid);
             const isReturned = state.overviewReturningFromId === m.uid;
             const isDpad = state.dpadIndex === idx;
@@ -1896,13 +2774,158 @@
     `;
   }
 
-  /* --- D. Zoomed-In Big Question Result Stage --- */
-  function renderZoomedDetailHtml() {
+  /* --- Bottom Composer Dock on Stage --- */
+  function renderStageBottomComposerHtml(tObj, agg) {
+    const m = tObj.member;
     const isFac = state.role === "facilitator";
+    const hasIdentity = Boolean(state.myMemberUid || state.myGuestName);
+    const isSelfTarget = Boolean(m && state.myMemberUid && state.myMemberUid === m.uid);
+
+    // 1. Self-Slide Lock ("ยกเว้นตัวเองคนที่ login")
+    if (isSelfTarget) {
+      return `
+        <div class="zm-self-lock-dock">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:15px;font-weight:800;color:#92400e">
+              🌟 สไลด์ของ '${esc(m.mentiName)}' (บัญชีที่คุณ Login อยู่) — ปิดช่องพิมพ์สำหรับเจ้าของชื่อ รอรับคำสะท้อนจากทุกคนขึ้นจอ!
+            </span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="zm-fac-stat-pill">💬 ส่งเข้ามาแล้ว ${agg.totalSubmissions} คำ (${agg.uniqueRespondents} คน)</span>
+            <button type="button" class="tv-pill-btn" data-act="open-identity">👤 สลับผู้ใช้งาน</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Explorer on a person slide without 3-digit login yet
+    if (m && !hasIdentity && !isFac) {
+      return `
+        <form class="zm-composer-dock" data-form="inline-pin3-login">
+          <div class="zm-composer-row">
+            <span style="font-size:14px;font-weight:800;color:#1e3a8a;white-space:nowrap">🔢 กรอกรหัส นศพ. 3 ตัวท้ายของคุณก่อนพิมพ์:</span>
+            <input
+              type="text"
+              name="pin3"
+              class="zm-word-input"
+              inputmode="numeric"
+              maxlength="7"
+              placeholder="เช่น 006, 035, 166 (อาจารย์พิมพ์ AJ)"
+              style="max-width:280px"
+            />
+            <button type="submit" class="zm-send-btn">ยืนยันรหัส</button>
+            <button type="button" class="tv-pill-btn" data-act="open-identity">เลือกจากรายชื่อ</button>
+          </div>
+          ${state.pinError ? `<div style="text-align:center;font-size:13px;font-weight:700;color:#dc2626">${esc(state.pinError)}</div>` : ""}
+        </form>
+      `;
+    }
+
+    // 3. Collapsed composer bar
+    if (!state.showComposerOnStage) {
+      return `
+        <div class="zm-fac-footer">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button type="button" class="tv-pill-btn" data-act="open-qr">📱 QR เข้าห้อง</button>
+            <span style="font-size:13px;font-weight:700;color:#059669">📡 มือถือทุกเครื่องซิงค์อยู่ที่โจทย์นี้</span>
+          </div>
+          <div class="zm-fac-stat-pill">
+            💬 ส่งเข้ามาแล้ว ${agg.totalSubmissions} รายการ
+          </div>
+          <button type="button" class="tv-pill-btn is-primary" data-act="toggle-stage-composer">⌨️ แสดงช่องพิมพ์ Post-it / คำตอบ</button>
+        </div>
+      `;
+    }
+
+    // 4. HOPES / FEARS / AFFINITY BOARD Composer: Text Input -> Choose Hope (เขียวอ่อน) or Fear (ชมพูอ่อน) -> Submit!
+    if (tObj.isHfMode) {
+      const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
+      const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      const inputTintStyle =
+        selPol === "fears"
+          ? "background:#fdf2f8;border-color:#f472b6;color:#831843"
+          : "background:#f7fee7;border-color:#84cc16;color:#14532d";
+
+      return `
+        <form class="zm-composer-dock" data-form="send-hf-postit" data-target-id="${targetBucketId}">
+          <div class="zm-composer-row" style="max-width:1180px;flex-wrap:wrap">
+            <input
+              type="text"
+              id="zmWordInput"
+              name="word"
+              class="zm-word-input"
+              style="${inputTintStyle};font-weight:700"
+              autocomplete="off"
+              placeholder="${selPol === "fears" ? "พิมพ์ความกังวล (Fear) ของคุณที่นี่..." : "พิมพ์ความหวัง (Hope) ของคุณที่นี่..."}"
+              maxlength="72"
+            />
+            <div class="hf-choice-group" role="group" aria-label="เลือกว่าเป็น Hope หรือ Fear">
+              <button
+                type="button"
+                class="hf-choice-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
+                data-act="set-hf-polarity"
+                data-polarity="hopes"
+              >
+                🌱 Hope (เขียวอ่อน)
+              </button>
+              <button
+                type="button"
+                class="hf-choice-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
+                data-act="set-hf-polarity"
+                data-polarity="fears"
+              >
+                🌸 Fear (ชมพูอ่อน)
+              </button>
+            </div>
+            <button type="submit" class="zm-send-btn">📌 แปะ Post-it</button>
+            ${isFac ? `<button type="button" class="tv-pill-btn hide-mobile" data-act="toggle-stage-composer">ซ่อนช่องพิมพ์</button>` : ""}
+          </div>
+          <div id="zmLiveThemeHint" style="text-align:center;font-size:12px;font-weight:700;color:${selPol === "fears" ? "#9f1239" : "#166534"}">
+            ${esc(previewEmergingThemeForInput("", selPol))}
+          </div>
+        </form>
+      `;
+    }
+
+    // 5. Standard Person / Trip Reflection Composer
+    const phText = m
+      ? `พิมพ์คำ หรือประโยคสั้นๆ ที่สะท้อน '${m.mentiName}'...`
+      : "พิมพ์ความคาดหวังต่อทริป รพร.กุฉินารายณ์...";
+
+    return `
+      <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
+        <div class="zm-composer-row">
+          <input
+            type="text"
+            id="zmWordInput"
+            name="word"
+            class="zm-word-input"
+            autocomplete="off"
+            placeholder="${esc(phText)}"
+            maxlength="54"
+          />
+          <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
+          <span class="hide-mobile" style="font-size:12.5px;font-weight:800;color:#1d4ed8;white-space:nowrap">
+            💬 ${agg.totalSubmissions} คำ (${agg.uniqueRespondents} คน)
+          </span>
+          ${isFac ? `<button type="button" class="tv-pill-btn hide-mobile" data-act="toggle-stage-composer">ซ่อนช่องพิมพ์</button>` : ""}
+        </div>
+        <div class="zm-emoji-bar">
+          ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
+        </div>
+      </form>
+    `;
+  }
+
+  /* --- Detail Stage Renderer --- */
+  function renderZoomedDetailHtml() {
     const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
     const m = tObj.member;
+    const isHopes = tObj.id === TOPIC_HOPES_ID;
+    const isFears = tObj.id === TOPIC_FEARS_ID;
+    const isHfBoard = tObj.id === TOPIC_HF_BOARD_ID;
     const agg = getAggregatedWords(tObj.id);
-    const positioned = computeAdaptiveWordCloud(agg.items);
+    const positioned = !tObj.isHfMode ? computeAdaptiveWordCloud(agg.items, false) : [];
 
     const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
     const ratings = Array.from(rMap.values());
@@ -1911,9 +2934,23 @@
     const displayScore = ownerRec ? Number(ownerRec.score) : avg;
     const scorePct = displayScore > 0 ? ((displayScore - 1) / 4) * 100 : 0;
 
-    const bigQuestionHtml = m
+    const bigQuestionHtml = isHopes
+      ? `<span class="zm-highlight-name" style="background:#ecfccb;border:1px solid #84cc16;color:#14532d">HOPES</span> ${esc(HOPES_QUESTION_TEXT)}`
+      : isFears
+      ? `<span class="zm-highlight-name" style="background:#fce7f3;border:1px solid #f472b6;color:#831843">FEARS</span> ${esc(FEARS_QUESTION_TEXT)}`
+      : isHfBoard
+      ? `<span class="zm-highlight-name" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);color:#1e3a8a">Hopes &amp; Fears</span> แลกเปลี่ยนความหวัง (Post-it เขียวอ่อน) และความกังวล (Post-it ชมพูอ่อน) ภายในกลุ่มใหญ่ (Conceptualization)`
+      : m
       ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
       : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์ จ.กาฬสินธุ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
+
+    const nextBtnLabel = isHopes
+      ? "ถัดไป: FEARS ▶"
+      : isFears
+      ? "ถัดไป: Affinity รวม ▶"
+      : isHfBoard
+      ? "ถัดไป: ภาพรวม 21 คน ▶"
+      : "คนถัดไป ▶";
 
     return `
       <main class="tv-zoom-stage-outer">
@@ -1929,33 +2966,92 @@
           <div class="zm-toolbar">
             <div class="zm-nav-group">
               ${renderUniversalNavClusterHtml(true)}
-              <button type="button" class="tv-pill-btn ${state.detailTab === "wordcloud" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="wordcloud">
-                ☁️ Word Cloud (${agg.totalSubmissions})
-              </button>
               ${
-                m
-                  ? `<button type="button" class="tv-pill-btn ${state.detailTab === "rating" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="rating">⭐ ให้คะแนน 1–5${displayScore > 0 ? ` (${displayScore.toFixed(1)})` : ""}</button>`
+                tObj.isHfMode && !isHfBoard
+                  ? `
+                    <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "split" ? "is-active" : ""}" data-act="set-hf-display" data-mode="split">
+                      📌 Post-it Affinity + ☁️ Cloud
+                    </button>
+                    <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "affinity" ? "is-active" : ""}" data-act="set-hf-display" data-mode="affinity">
+                      📌 Affinity เต็มจอ
+                    </button>
+                    <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "cloud" ? "is-active" : ""}" data-act="set-hf-display" data-mode="cloud">
+                      ☁️ Word Cloud เต็มจอ
+                    </button>
+                  `
+                  : !isHfBoard
+                  ? `
+                    <button type="button" class="tv-pill-btn ${state.detailTab === "wordcloud" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="wordcloud">
+                      ☁️ Word Cloud (${agg.totalSubmissions})
+                    </button>
+                    ${
+                      m
+                        ? `<button type="button" class="tv-pill-btn ${state.detailTab === "rating" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="rating">⭐ ให้คะแนน 1–5${displayScore > 0 ? ` (${displayScore.toFixed(1)})` : ""}</button>`
+                        : ""
+                    }
+                  `
                   : ""
               }
-              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(tObj.id)}">📊 ความถี่คำ</button>
+              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(tObj.id)}">📊 รายการคำ (${agg.totalSubmissions})</button>
             </div>
 
             <div class="zm-nav-group">
               <button type="button" class="tv-pill-btn" data-act="toggle-hide-words">${state.hideWordsUntilReveal ? "👁️ เปิดเฉลยพร้อมกัน!" : "🙈 ซ่อนรอเฉลย"}</button>
-              <button type="button" class="tv-pill-btn" data-act="prev-person" title="คนก่อนหน้า">◀</button>
-              <button type="button" class="tv-pill-btn is-roulette" data-act="spin-roulette">🎲 สุ่มคนถัดไป</button>
-              <button type="button" class="tv-pill-btn" data-act="next-person" title="คนถัดไป">▶</button>
+              <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀ ก่อนหน้า</button>
+              <button type="button" class="tv-pill-btn is-primary" data-act="clicker-next" title="สไลด์ถัดไป (PageDown / →)">${nextBtnLabel}</button>
             </div>
           </div>
 
           <div class="zm-hero-header">
             ${
-              m
+              isHopes
+                ? `
+                  <div class="zm-person-portrait-card" style="background:linear-gradient(145deg,#ecfccb 0%,#dcfce7 100%);border-color:#84cc16">
+                    <div style="width:68px;height:68px;border-radius:14px;background:#bef264;border:1.5px solid #65a30d;color:#14532d;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:15px;flex-shrink:0;box-shadow:0 6px 14px rgba(101,163,13,0.2)">
+                      <span style="text-decoration:underline">Hope</span>
+                      <span style="font-size:20px">🌱</span>
+                    </div>
+                    <div class="zm-person-meta">
+                      <span class="zm-person-kicker" style="color:#15803d">SLIDE 2 · POST-IT สีเขียวอ่อน</span>
+                      <span class="zm-person-nick" style="color:#14532d">ความหวัง (Hopes)</span>
+                      <span class="zm-person-fullname">Thematic Analysis &amp; Word Cloud</span>
+                    </div>
+                  </div>
+                `
+                : isFears
+                ? `
+                  <div class="zm-person-portrait-card" style="background:linear-gradient(145deg,#fce7f3 0%,#fbcfe8 100%);border-color:#f472b6">
+                    <div style="width:68px;height:68px;border-radius:14px;background:#fbcfe8;border:1.5px solid #ec4899;color:#831843;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:15px;flex-shrink:0;box-shadow:0 6px 14px rgba(236,72,153,0.2)">
+                      <span style="text-decoration:underline">Fear</span>
+                      <span style="font-size:20px">🌸</span>
+                    </div>
+                    <div class="zm-person-meta">
+                      <span class="zm-person-kicker" style="color:#be185d">SLIDE 3 · POST-IT สีชมพูอ่อน</span>
+                      <span class="zm-person-nick" style="color:#831843">ความกังวล (Fears)</span>
+                      <span class="zm-person-fullname">Thematic Analysis &amp; Word Cloud</span>
+                    </div>
+                  </div>
+                `
+                : isHfBoard
+                ? `
+                  <div class="zm-person-portrait-card" style="background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 100%);border-color:#1e40af;color:#fff">
+                    <div style="display:flex;gap:4px;flex-shrink:0">
+                      <div style="width:34px;height:44px;background:#d9f99d;color:#14532d;border-radius:3px;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:rotate(-4deg);text-decoration:underline">Hope</div>
+                      <div style="width:34px;height:44px;background:#fbcfe8;color:#831843;border-radius:3px;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:rotate(4deg);text-decoration:underline">Fear</div>
+                    </div>
+                    <div class="zm-person-meta">
+                      <span class="zm-person-kicker" style="color:#bfdbfe">SLIDE 4 · AFFINITY DIAGRAM</span>
+                      <span class="zm-person-nick" style="color:#ffffff">Hopes and Fears</span>
+                      <span class="zm-person-fullname" style="color:#dbeafe">'ความหวัง' และ 'ความกังวล'</span>
+                    </div>
+                  </div>
+                `
+                : m
                 ? `
                   <div class="zm-person-portrait-card">
                     <img src="${esc(m.photo)}" alt="${esc(m.fullName)}" />
                     <div class="zm-person-meta">
-                      <span class="zm-person-kicker">${esc(m.kind === "student" ? `KUCHI GANG #${m.studentNo}/20 · DISC ${m.disc}` : m.roleBadge)}</span>
+                      <span class="zm-person-kicker">${esc(m.kind === "student" ? `รหัสท้าย ${m.shortNo} · #${m.studentNo}/20 · DISC ${m.disc}` : m.roleBadge)}</span>
                       <span class="zm-person-nick">${esc(m.nickname)}</span>
                       <span class="zm-person-fullname">${esc(m.fullName)}${m.kind === "student" ? ` (${esc(m.id)})` : ""}</span>
                     </div>
@@ -1963,7 +3059,7 @@
                 `
                 : `
                   <div class="zm-person-portrait-card">
-                    <div style="width:72px;height:72px;border-radius:18px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:34px">🚂</div>
+                    <div style="width:72px;height:72px;border-radius:18px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:34px;flex-shrink:0">🚂</div>
                     <div class="zm-person-meta">
                       <span class="zm-person-kicker">10–19 ธ.ค. 2569 · จ.กาฬสินธุ์</span>
                       <span class="zm-person-nick">รพร.กุฉินารายณ์</span>
@@ -1973,11 +3069,13 @@
                 `
             }
 
-            <h1 class="zm-big-question">${bigQuestionHtml}</h1>
+            <h1 class="zm-big-question" ${isHfBoard ? 'style="font-size:clamp(18px,1.85vw,28px)"' : ""}>${bigQuestionHtml}</h1>
           </div>
 
           ${
-            state.detailTab === "rating" && m
+            tObj.isHfMode
+              ? renderThematicAffinityBodyHtml(tObj) + renderStageBottomComposerHtml(tObj, agg)
+              : state.detailTab === "rating" && m
               ? `
                 <div class="zm-rating-wrap">
                   <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">
@@ -2058,7 +3156,7 @@
                       ? `
                         <div class="zm-empty-prompt">
                           <strong>🙈 ซ่อนคำสะท้อนไว้รอเฉลยพร้อมกัน (${agg.totalSubmissions} คำ · จาก ${agg.uniqueRespondents} คน)</strong>
-                          <p>ผู้เรียนกำลังพิมพ์ส่งคำจากมือถือ... เมื่อพร้อมแล้วกดปุ่มด้านล่างเพื่อเปิด Word Cloud บนจอใหญ่!</p>
+                          <p>เมื่อทุกคนส่งคำครบแล้ว กดปุ่มด้านล่างเพื่อเปิดเฉลย Word Cloud บนจอใหญ่พร้อมกัน!</p>
                           <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">✨ เปิดเฉลย Word Cloud พร้อมกัน!</button>
                         </div>
                       `
@@ -2082,8 +3180,8 @@
                       `
                       : `
                         <div class="zm-empty-prompt">
-                          <strong>💬 รอรับคำสะท้อนตัวตนของ '${esc(tObj.shortTitle)}' แบบเรียลไทม์!</strong>
-                          <p>${isFac ? "ขณะนี้มือถือทุกเครื่องที่สแกน QR เด้งเข้าช่องพิมพ์คำตอบของคนนี้แล้ว — คำที่ส่งจะลอยขึ้นมาบนจอใหญ่นี้ทันที!" : "พิมพ์คำหรือประโยคสั้นๆ จากช่องด้านล่าง หรือกดปุ่ม 📱 QR เพื่อให้เพื่อนสแกนร่วมส่งสด"}</p>
+                          <strong>💬 ส่งคำหรือประโยคสะท้อนตัวตนของ '${esc(tObj.shortTitle)}' กันเลย!</strong>
+                          <p>พิมพ์คำหรือประโยคสั้นๆ จากมือถือหรือช่องด้านล่างได้เลย (ยกเว้นเจ้าของชื่อในสไลด์นั้น)</p>
                           <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
                             <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
                             ${
@@ -2097,44 +3195,7 @@
                   }
                 </div>
 
-                ${
-                  isFac && !state.showComposerOnStage
-                    ? `
-                      <div class="zm-fac-footer">
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                          <button type="button" class="tv-pill-btn" data-act="open-qr">📱 QR สำหรับคนเข้าเพิ่ม</button>
-                          <span style="font-size:13px;font-weight:700;color:#059669">📡 มือถือทุกเครื่องซิงค์อยู่ที่โจทย์นี้</span>
-                        </div>
-                        <div class="zm-fac-stat-pill">
-                          💬 ส่งเข้ามาแล้ว ${agg.totalSubmissions} คำ · จากผู้ตอบ ${agg.uniqueRespondents} คน
-                        </div>
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                          <button type="button" class="tv-pill-btn" data-act="toggle-stage-composer">⌨️ พิมพ์เสริมจากจอนี้</button>
-                          ${m ? `<button type="button" class="tv-pill-btn" data-act="set-detail-tab" data-tab="rating">⭐ ไปหน้าโหวต 1–5 →</button>` : ""}
-                        </div>
-                      </div>
-                    `
-                    : `
-                      <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
-                        <div class="zm-composer-row">
-                          <input
-                            type="text"
-                            id="zmWordInput"
-                            name="word"
-                            class="zm-word-input"
-                            autocomplete="off"
-                            placeholder="พิมพ์คำ หรือประโยคสั้นๆ ที่สะท้อน '${esc(tObj.shortTitle)}'..."
-                            maxlength="54"
-                          />
-                          <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
-                          ${isFac ? `<button type="button" class="tv-pill-btn" data-act="toggle-stage-composer" title="ซ่อนแถบพิมพ์เพื่อให้เห็นผลเต็มจอ">ซ่อนช่องพิมพ์</button>` : ""}
-                        </div>
-                        <div class="zm-emoji-bar">
-                          ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
-                        </div>
-                      </form>
-                    `
-                }
+                ${renderStageBottomComposerHtml(tObj, agg)}
               `
           }
         </section>
@@ -2142,11 +3203,13 @@
     `;
   }
 
-  /* --- E. Full-Screen Student Type-Answer Phone Controller (join.html / #join) --- */
+  /* --- Student Phone Controller (join.html / #join) --- */
   function renderParticipantPhoneHtml() {
     const myMem = MEMBER_MAP.get(state.myMemberUid);
     const hasIdentity = Boolean(myMem || state.myGuestName);
-    const myDisplayName = myMem ? myMem.nickname : state.myGuestName || "เลือกชื่อ";
+    const myDisplayName = myMem
+      ? `${myMem.nickname}${myMem.kind === "student" ? ` (${myMem.shortNo})` : ""}`
+      : state.myGuestName || "ยืนยันรหัส";
 
     const topBar = `
       <div class="tv-topbar-wrap">
@@ -2158,7 +3221,7 @@
             ${
               hasIdentity
                 ? `
-                  <button type="button" class="tv-pill-btn" data-act="phone-pick-name" title="แตะเพื่อเปลี่ยนชื่อผู้ตอบ">
+                  <button type="button" class="tv-pill-btn" data-act="phone-pick-name" title="แตะเพื่อเปลี่ยนรหัสผู้ตอบ">
                     👤 <span>${esc(myDisplayName)}</span>
                   </button>
                 `
@@ -2173,7 +3236,7 @@
       </div>
     `;
 
-    // Step 1: Pick Identity from 21 Kuchi Gang Members (100% Clickable!)
+    // Step 1: Identify via 3-Digit Student ID
     if (!hasIdentity || state.phonePickingIdentity) {
       return (
         topBar +
@@ -2182,8 +3245,8 @@
             <section class="ph-card">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
                 <div>
-                  <h1 style="margin:0 0 4px;font-size:21px;font-weight:800;color:#0f172a">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h1>
-                  <p style="margin:0;font-size:13.5px;color:#64748b">แตะรูปตัวเองครั้งเดียว เพื่อเช็คอินขึ้นจอใหญ่และเข้าสู่โหมดพิมพ์คำตอบเต็มตัว (21 คน)</p>
+                  <h1 style="margin:0 0 4px;font-size:21px;font-weight:800;color:#0f172a">ยืนยันตัวตนเข้าห้อง Kuchi Gang 2569 👋</h1>
+                  <p style="margin:0;font-size:13.5px;color:#64748b">กรอกรหัส นศพ. 3 ตัวท้าย เพื่อซิงค์ตามจอใหญ่และปิดช่องพิมพ์อัตโนมัติเมื่อถึงสไลด์ของตัวเอง</p>
                 </div>
                 ${
                   hasIdentity
@@ -2192,32 +3255,19 @@
                 }
               </div>
 
-              ${renderIdentityGridCardsHtml()}
-
-              <form data-form="guest-identity" style="display:flex;gap:8px;padding-top:10px;border-top:1px solid #e2e8f0">
-                <input
-                  type="text"
-                  name="guestName"
-                  class="ph-answer-input"
-                  style="height:40px;font-size:15px"
-                  placeholder="หรือพิมพ์ชื่อเล่น (กรณีอาจารย์/แขกร่วมกิจกรรม)..."
-                  maxlength="24"
-                  value="${esc(state.myGuestName)}"
-                />
-                <button type="submit" class="tv-pill-btn is-primary" style="height:40px;padding:0 16px">ตกลง</button>
-              </form>
+              ${renderPin3LoginWidgetHtml()}
             </section>
           </main>
         `
       );
     }
 
-    // Step 2: Standby View when Facilitator is on Slide 1 (QR Lobby) or 21-Card Overview
+    // Step 2: Standby View when Facilitator is on Slide 1 or Overview
     if (state.view !== "detail" && !state.phoneManualOverride) {
       const stageLabel =
         state.view === "lobby"
-          ? "📱 จอใหญ่กำลังเปิด Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน"
-          : "⊞ จอใหญ่กำลังอยู่ที่หน้าภาพรวม 21 คน (กำลังสุ่ม/เลือกคนถัดไป...)";
+          ? "📱 จอใหญ่กำลังอยู่ที่ Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน"
+          : "⊞ จอใหญ่กำลังอยู่ที่หน้าภาพรวม 21 คน (รออาจารย์เลือกโจทย์ถัดไป...)";
 
       return (
         topBar +
@@ -2225,7 +3275,7 @@
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>📡 เชื่อมต่อจอใหญ่สำเร็จ · บังคับเปลี่ยนข้อตาม Facilitator อัตโนมัติ</span>
+                <span>📡 เชื่อมต่อจอใหญ่สำเร็จ · เปลี่ยนข้อตาม Facilitator อัตโนมัติ</span>
               </div>
 
               <div class="ph-standby-box">
@@ -2241,7 +3291,7 @@
                   ${stageLabel}
                 </div>
                 <p style="margin:2px 0 0;font-size:14.5px;color:#475569;line-height:1.5;max-width:440px">
-                  👀 <strong>เงยหน้าดูจอใหญ่พร้อมกัน</strong> — ทันทีที่อาจารย์เปิดโจทย์ของเพื่อนคนถัดไป หน้าจอมือถือนี้จะเปลี่ยนเป็นช่องพิมพ์คำตอบเต็มจอให้อัตโนมัติทันที!
+                  👀 <strong>เงยหน้าดูจอใหญ่พร้อมกัน</strong> — ทันทีที่อาจารย์กด Clicker ไปโจทย์ถัดไป หน้าจอมือถือนี้จะเปิดกระดาษ Post-it / ช่องพิมพ์คำตอบให้อัตโนมัติ!
                 </p>
               </div>
 
@@ -2250,7 +3300,7 @@
                   ? `
                     <div style="border-top:1px dashed #e2e8f0;padding-top:12px;text-align:center">
                       <button type="button" class="tv-pill-btn" data-act="phone-enable-manual">
-                        เลือกคนเพื่อส่งคำล่วงหน้าด้วยตัวเอง (กรณีไม่ได้อยู่ในห้องสด)
+                        เลือกหัวข้อเพื่อส่งคำตอบด้วยตัวเอง (กรณีไม่ได้เปิดจอ Facilitator)
                       </button>
                     </div>
                   `
@@ -2262,16 +3312,23 @@
       );
     }
 
-    // Optional Manual Picker if outside live session and user explicitly requested it
     if (state.phoneManualOverride && state.view !== "detail") {
       return (
         topBar +
         `
           <main class="ph-shell">
             <section class="ph-card">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <strong style="font-size:17px">แตะเลือกสมาชิกที่ต้องการส่งคำสะท้อน</strong>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <strong style="font-size:16.5px">เลือกหัวข้อหรือสมาชิกที่ต้องการตอบ</strong>
                 <button type="button" class="tv-pill-btn" data-act="phone-disable-manual">กลับโหมดรอจอใหญ่</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <button type="button" class="tv-pill-btn" style="height:42px;background:#ecfccb;border-color:#84cc16;color:#14532d" data-act="phone-manual-target" data-target-id="${TOPIC_HOPES_ID}">
+                  🌱 HOPES (เขียวอ่อน)
+                </button>
+                <button type="button" class="tv-pill-btn" style="height:42px;background:#fce7f3;border-color:#f472b6;color:#831843" data-act="phone-manual-target" data-target-id="${TOPIC_FEARS_ID}">
+                  🌸 FEARS (ชมพูอ่อน)
+                </button>
               </div>
               <div class="id-picker-grid">
                 ${MEMBERS.map(
@@ -2279,7 +3336,7 @@
                     <button type="button" class="id-picker-card" data-act="phone-manual-target" data-target-id="${esc(m.uid)}">
                       <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
                       <strong>${esc(m.nickname)}</strong>
-                      <span>${esc(m.firstName)}</span>
+                      <span>${esc(m.kind === "student" ? m.shortNo : "AJ")}</span>
                     </button>
                   `
                 ).join("")}
@@ -2290,21 +3347,122 @@
       );
     }
 
-    // Step 3: Active Question on Phone (Full Type-Answer Mode OR Full 1-5 Rating Mode)
+    // Step 3: Active Slide on Phone
     const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
     const m = tObj.member;
+    const isSelfTarget = Boolean(m && state.myMemberUid && state.myMemberUid === m.uid);
     const mySentWords = getMySentWordsForTarget(tObj.id);
     const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
     const myPrevRating = rMap.get(persistentPid);
 
+    // 3A. HOPES / FEARS / AFFINITY BOARD Post-it Pad on Phone!
+    if (tObj.isHfMode) {
+      const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
+      const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
+
+      const questionHtml =
+        tObj.id === TOPIC_HOPES_ID
+          ? `<span class="zm-highlight-name" style="background:#ecfccb;color:#14532d">HOPES</span> ${esc(HOPES_QUESTION_TEXT)}`
+          : tObj.id === TOPIC_FEARS_ID
+          ? `<span class="zm-highlight-name" style="background:#fce7f3;color:#831843">FEARS</span> ${esc(FEARS_QUESTION_TEXT)}`
+          : `<span class="zm-highlight-name">Hopes &amp; Fears</span> เขียนความหวัง (Post-it เขียวอ่อน) หรือความกังวล (Post-it ชมพูอ่อน) เพื่อจัดกลุ่มเข้า Affinity Diagram บนจอใหญ่`;
+
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner">
+                <span>📌 Hopes &amp; Fears Post-it · จัดกลุ่ม Affinity อัตโนมัติบนจอใหญ่</span>
+                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
+              </div>
+
+              <h1 class="ph-big-question">${questionHtml}</h1>
+
+              ${
+                showSubmittedCard
+                  ? `
+                    <div class="ph-standby-box" style="background:${selPol === "fears" ? "#fdf2f8;border:1.5px solid #f472b6" : "#f7fee7;border:1.5px solid #84cc16"};border-radius:20px;padding:22px 16px">
+                      <div style="font-size:36px;line-height:1">📌</div>
+                      <strong style="font-size:19px;color:#0f172a">แปะ Post-it ขึ้นบอร์ดใหญ่เรียบร้อยแล้ว!</strong>
+                      <p style="margin:0;font-size:14px;color:#475569">👀 เงยหน้าดูการจัดกลุ่ม <strong>Emerging Themes (Affinity Diagram)</strong> บนจอใหญ่พร้อมกันเลย!</p>
+                      ${
+                        mySentWords.length
+                          ? `
+                            <div style="margin-top:6px">
+                              <div class="ph-sent-chips">
+                                ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                              </div>
+                            </div>
+                          `
+                          : ""
+                      }
+                      <button type="button" class="ph-submit-btn" style="margin-top:10px" data-act="phone-more-words">
+                        ➕ เขียน Post-it แผ่นต่อไปเพิ่มอีก
+                      </button>
+                    </div>
+                  `
+                  : `
+                    <form data-form="phone-send-hf" data-slide-id="${esc(tObj.id)}" data-target-id="${targetBucketId}" style="display:flex;flex-direction:column;gap:12px">
+                      <div class="ph-postit-pad ${selPol === "fears" ? "is-fears" : "is-hopes"}">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                          <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear (ความกังวล)" : "Hope (ความหวัง)"}</span>
+                          <span style="font-size:11.5px;font-weight:800;opacity:0.8">${selPol === "fears" ? "🌸 Post-it ชมพูอ่อน" : "🌱 Post-it เขียวอ่อน"}</span>
+                        </div>
+                        <textarea
+                          id="phHfInput"
+                          name="hfText"
+                          class="ph-postit-textarea"
+                          maxlength="72"
+                          placeholder="${selPol === "fears" ? "พิมพ์ความกังวลของคุณในการวนรายวิชา COMMED..." : "พิมพ์ความหวังต่อการเรียนรู้และประสบการณ์ใน COMMED..."}"
+                        ></textarea>
+                        <div id="phLiveThemeHint" style="font-size:12px;font-weight:700;opacity:0.88">
+                          ${esc(previewEmergingThemeForInput("", selPol))}
+                        </div>
+                      </div>
+
+                      <div style="font-size:13px;font-weight:800;color:#334155;text-align:center">
+                        เลือกประเภทแผ่น Post-it ของข้อความนี้:
+                      </div>
+                      <div class="ph-hf-selector-grid">
+                        <button
+                          type="button"
+                          class="ph-hf-card-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
+                          data-act="set-hf-polarity"
+                          data-polarity="hopes"
+                        >
+                          🌱 Hope (เขียวอ่อน)
+                        </button>
+                        <button
+                          type="button"
+                          class="ph-hf-card-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
+                          data-act="set-hf-polarity"
+                          data-polarity="fears"
+                        >
+                          🌸 Fear (ชมพูอ่อน)
+                        </button>
+                      </div>
+
+                      <button type="submit" class="ph-submit-btn">
+                        📌 แปะ Post-it ${selPol === "fears" ? "สีชมพูอ่อน (Fear)" : "สีเขียวอ่อน (Hope)"} ขึ้นจอใหญ่!
+                      </button>
+                    </form>
+                  `
+              }
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // 3B. Rating Scale 1–5 Controller on Phone
     const bigQuestionHtml = m
       ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
       : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
 
-    // 3B. Rating Scale 1–5 Controller on Phone
     if (state.detailTab === "rating" && m) {
       const currentVal = myPrevRating ? Number(myPrevRating.score) : state.phoneDraftRating;
-      const isSelf = state.myMemberUid === m.uid;
       return (
         topBar +
         `
@@ -2312,13 +3470,13 @@
             <section class="ph-card">
               <div class="ph-sync-banner">
                 <span>⭐ โหมดให้คะแนน 1–5 · ดูผลกราฟสดบนจอใหญ่</span>
-                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
               </div>
 
               <div class="ph-person-banner">
                 <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
                 <div>
-                  <div style="font-size:12px;font-weight:800;color:#2563eb">${esc(isSelf ? "🌟 การ์ดของคุณเอง!" : `KUCHI GANG · ${m.nickname}`)}</div>
+                  <div style="font-size:12px;font-weight:800;color:#2563eb">${esc(isSelfTarget ? "🌟 การ์ดของคุณเอง!" : `KUCHI GANG · ${m.nickname}`)}</div>
                   <div style="font-size:18px;font-weight:800;color:#0f172a">${esc(m.mentiName)}</div>
                   <div style="font-size:12.5px;color:#64748b">${esc(m.fullName)}</div>
                 </div>
@@ -2368,7 +3526,35 @@
       );
     }
 
-    // 3A. Full Type-Answer Controller on Phone (Default for Word Cloud)
+    // 3C-Self: Logged-in Student is Viewing Their OWN Person Slide -> Hide Input!
+    if (isSelfTarget && m) {
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner" style="background:linear-gradient(135deg,#fefce8,#eff6ff);border-color:#fde68a;color:#92400e">
+                <span>🌟 ตอนนี้เป็นสไลด์ของตัวคุณเอง!</span>
+                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+              </div>
+
+              <div class="ph-standby-box" style="background:#fefce8;border:1.5px solid #fde68a;border-radius:20px;padding:24px 16px">
+                <div class="ph-pulse-ring">
+                  <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
+                </div>
+                <strong style="font-size:20px;color:#78350f">รอบนี้เป็นโจทย์ของ '${esc(m.mentiName)}' ✨</strong>
+                <p style="margin:0;font-size:14.5px;color:#92400e;line-height:1.5">
+                  ระบบ<strong>ปิดช่องพิมพ์สำหรับเจ้าของชื่อ</strong> เพื่อให้เพื่อนๆ และอาจารย์ช่วยกันส่งคำสะท้อนตัวตนของคุณ<br/>
+                  👀 <strong>เงยหน้าดูผล Live Word Cloud ของคุณบนจอใหญ่พร้อมกันเลย!</strong>
+                </p>
+              </div>
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // 3D. Full Type-Answer Controller for Peer Reflection Slides
     const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
 
     return (
@@ -2377,8 +3563,8 @@
         <main class="ph-shell">
           <section class="ph-card">
             <div class="ph-sync-banner">
-              <span>✍️ Full Type-Answer · ส่งคำตอบเพื่อดูผลบนจอใหญ่พร้อมกัน</span>
-              ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+              <span>✍️ Full Type-Answer · ส่งคำตอบขึ้นจอใหญ่</span>
+              ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
             </div>
 
             <div class="ph-person-banner">
@@ -2389,7 +3575,7 @@
               }
               <div style="min-width:0">
                 <div style="font-size:11.5px;font-weight:800;color:#2563eb">
-                  ${esc(m ? (m.kind === "student" ? `KUCHI GANG #${m.studentNo}/20 · DISC ${m.disc}` : m.roleBadge) : "10–19 ธ.ค. 2569 · จ.กาฬสินธุ์")}
+                  ${esc(m ? (m.kind === "student" ? `รหัสท้าย ${m.shortNo} · #${m.studentNo}/20` : m.roleBadge) : "10–19 ธ.ค. 2569 · จ.กาฬสินธุ์")}
                 </div>
                 <div style="font-size:19px;font-weight:800;color:#0f172a;line-height:1.15">${esc(tObj.shortTitle)}</div>
                 ${m ? `<div style="font-size:12.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.fullName)}</div>` : ""}
@@ -2409,7 +3595,6 @@
                       mySentWords.length
                         ? `
                           <div style="margin-top:6px">
-                            <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px">คำที่คุณส่งให้ '${esc(tObj.shortTitle)}' แล้ว:</div>
                             <div class="ph-sent-chips">
                               ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
                             </div>
@@ -2468,16 +3653,6 @@
                     </div>
 
                     <button type="submit" class="ph-submit-btn">🚀 ส่งคำตอบขึ้นจอใหญ่!</button>
-
-                    ${
-                      mySentWords.length
-                        ? `
-                          <div style="text-align:center;padding-top:4px">
-                            <span style="font-size:12px;color:#64748b;font-weight:700">ส่งไปแล้ว ${mySentWords.length} คำ: ${esc(mySentWords.join(" · "))}</span>
-                          </div>
-                        `
-                        : ""
-                    }
                   </form>
                 `
             }
@@ -2487,7 +3662,7 @@
     );
   }
 
-  /* --- F. Modals (NO stopPropagation! Clean Backdrop Detection) --- */
+  /* --- Modals --- */
   function renderModalNavHeaderHtml(titleHtml, extraRightHtml) {
     return `
       <div class="tv-modal-nav-header">
@@ -2505,7 +3680,6 @@
     if (state.role === "participant") return "";
     let html = "";
 
-    // 1. QR Instructions Modal
     if (state.qrModalOpen) {
       const joinUrl = getJoinUrl();
       const online = Array.from(state.presence.values());
@@ -2513,7 +3687,7 @@
         <div class="tv-modal-backdrop">
           <div class="tv-modal-card" style="max-width:560px;text-align:center">
             ${renderModalNavHeaderHtml(
-              `<h2 style="margin:0 0 4px;font-size:24px;font-weight:800">📱 สแกนเข้าโหมดผู้ตอบ (Full Type-Answer)</h2><p style="margin:0;font-size:14px;color:#64748b">มือถือที่สแกนจะวิ่งเปลี่ยนโจทย์ตามจอ Facilitator พร้อมกันอัตโนมัติ</p>`
+              `<h2 style="margin:0 0 4px;font-size:24px;font-weight:800">📱 สแกนเข้าห้องสด (รหัส นศพ. 3 ตัวท้าย)</h2><p style="margin:0;font-size:14px;color:#64748b">มือถือที่สแกนจะเปลี่ยนโจทย์ตามจอ Facilitator พร้อมกันอัตโนมัติ</p>`
             )}
             <div class="tv-qr-box">
               ${buildQrSvg(joinUrl)}
@@ -2540,21 +3714,19 @@
       `;
     }
 
-    // 2. Identity Picker Modal (21 Members — Zero stopPropagation, 100% Clickable!)
     if (state.identityModalOpen) {
       html += `
         <div class="tv-modal-backdrop">
-          <div class="tv-modal-card">
+          <div class="tv-modal-card" style="max-width:580px">
             ${renderModalNavHeaderHtml(
-              `<h3 style="margin:0 0 4px;font-size:21px;font-weight:800">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h3><p style="margin:0;font-size:14px;color:#64748b">แตะรูปตัวเองครั้งเดียว ระบบจำชื่ออัตโนมัติและซิงค์เข้าห้องสดทันที (21 คน)</p>`
+              `<h3 style="margin:0 0 4px;font-size:21px;font-weight:800">ยืนยันตัวตนด้วยรหัส นศพ. 3 ตัวท้าย 👋</h3><p style="margin:0;font-size:14px;color:#64748b">ระบบจำชื่ออัตโนมัติ และจะปิดช่องพิมพ์เมื่อเปิดถึงสไลด์ของตัวคุณเอง</p>`
             )}
-            ${renderIdentityGridCardsHtml()}
+            ${renderPin3LoginWidgetHtml()}
           </div>
         </div>
       `;
     }
 
-    // 3. Results Frequency Table Modal
     if (state.resultsModalTargetId) {
       const tid = state.resultsModalTargetId;
       const agg = getAggregatedWords(tid);
@@ -2563,13 +3735,13 @@
         <div class="tv-modal-backdrop">
           <div class="tv-modal-card">
             ${renderModalNavHeaderHtml(
-              `<h3 style="margin:0;font-size:20px;font-weight:800">📊 ความถี่คำสะท้อน — ${esc(tObj ? tObj.shortTitle : "")} (${agg.totalSubmissions} คำ)</h3>`,
-              `<button type="button" class="tv-pill-btn" style="color:#dc2626;border-color:#fecaca" data-act="clear-target" data-target-id="${esc(tid)}">🗑️ ล้างสไลด์นี้</button>`
+              `<h3 style="margin:0;font-size:20px;font-weight:800">📊 รายการข้อความ — ${esc(tObj ? tObj.shortTitle : "")} (${agg.totalSubmissions} รายการ)</h3>`,
+              `<button type="button" class="tv-pill-btn" style="color:#dc2626;border-color:#fecaca" data-act="clear-target" data-target-id="${esc(tid)}">🗑️ ล้างข้อมูลสไลด์นี้</button>`
             )}
             <table style="width:100%;border-collapse:collapse;font-size:14.5px">
               <thead>
                 <tr style="border-bottom:2px solid #e2e8f0;text-align:left">
-                  <th style="padding:8px">คำ / ประโยค</th>
+                  <th style="padding:8px">ข้อความ / คำสะท้อน</th>
                   <th style="padding:8px;width:110px">ความถี่</th>
                   <th style="padding:8px;width:80px">จัดการ</th>
                 </tr>
@@ -2583,12 +3755,12 @@
                             <tr style="border-bottom:1px solid #f1f5f9">
                               <td style="padding:8px;font-weight:700">${esc(item.text)}</td>
                               <td style="padding:8px">${item.count}</td>
-                              <td style="padding:8px"><button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="delete-word-norm" data-target-id="${esc(tid)}" data-norm="${esc(item.key)}">ลบ</button></td>
+                              <td style="padding:8px"><button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="delete-word-norm" data-target-id="${esc(tid === TOPIC_HF_BOARD_ID ? TOPIC_HOPES_ID : tid)}" data-norm="${esc(item.key)}">ลบ</button></td>
                             </tr>
                           `
                         )
                         .join("")
-                    : `<tr><td colspan="3" style="padding:18px;text-align:center;color:#94a3b8">ยังไม่มีคำสะท้อน</td></tr>`
+                    : `<tr><td colspan="3" style="padding:18px;text-align:center;color:#94a3b8">ยังไม่มีข้อความ</td></tr>`
                 }
               </tbody>
             </table>
@@ -2597,7 +3769,6 @@
       `;
     }
 
-    // 4. Roadmap & 5 Objectives Modal
     if (state.roadmapModalOpen) {
       html += `
         <div class="tv-modal-backdrop">
@@ -2620,7 +3791,7 @@
                 )
                 .join("")}
             </div>
-            <button type="button" class="tv-pill-btn" data-act="export-json">💾 สำรองข้อมูลคำสะท้อนทั้งหมด (.json)</button>
+            <button type="button" class="tv-pill-btn" data-act="export-json">💾 สำรองข้อมูลทั้งหมด (.json)</button>
           </div>
         </div>
       `;
@@ -2633,13 +3804,12 @@
     const el = document.getElementById("tvConnBadge");
     if (!el) return;
     el.classList.toggle("is-offline", state.connectedCount <= 0);
-    const label = state.role === "participant" ? (state.connectedCount > 0 ? "ซิงค์จอใหญ่" : "กำลังเชื่อม...") : state.connectedCount > 0 ? "Live Sync" : "Local";
+    const label = state.role === "participant" ? (state.connectedCount > 0 ? "ซิงค์จอใหญ่" : "กำลังเชื่อม...") : state.connectedCount > 0 ? "Live" : "Local";
     el.innerHTML = `<span class="tv-live-dot"></span><span>${label}</span>`;
   }
 
-  /* Re-render without losing text currently typed inside ANY input box! */
   function renderPreservingFocus() {
-    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phReasonInput"];
+    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phHfInput", "phReasonInput", "pin3Input"];
     const savedValues = {};
     preserveIds.forEach((id) => {
       const el = document.getElementById(id);
@@ -2689,7 +3859,7 @@
     root.innerHTML = renderTopBarHtml() + stageHtml + renderModalsHtml();
   }
 
-  /* ---------- 12. Event Delegation (Zero stopPropagation — 100% Reliable Clicks!) ---------- */
+  /* ---------- 13. Event Delegation & Wireless Clicker Navigation ---------- */
   document.addEventListener("focusin", (ev) => {
     const id = ev.target && ev.target.id;
     if (id === "phW1" || id === "phW2" || id === "phW3") {
@@ -2699,16 +3869,31 @@
 
   document.addEventListener("input", (ev) => {
     const t = ev.target;
-    if (t && t.id === "phRatingSlider") {
+    if (!t) return;
+    if (t.id === "phRatingSlider") {
       const v = Number(t.value || 4.5);
       state.phoneDraftRating = v;
       const ro = document.getElementById("phRatingReadout");
       if (ro) ro.innerHTML = `${v.toFixed(1)} <span style="font-size:16px;color:#64748b">/ 5.0</span>`;
+    } else if (t.id === "pin3Input") {
+      state.pinDraft = String(t.value || "").trim();
+      state.pinError = "";
+      const matched = matchMemberByCode(state.pinDraft);
+      if (!matched && state.pinDraft.replace(/\D/g, "").length >= 3) {
+        state.pinError = "ไม่พบรหัส 3 ตัวท้ายนี้ในกลุ่มที่ 1 กุฉินารายณ์ (ลองเช่น 006, 035, 166)";
+      }
+      const box = document.getElementById("pin3LivePreview");
+      if (box) box.innerHTML = renderPin3PreviewInnerHtml(matched);
+    } else if (t.id === "phHfInput") {
+      const hint = document.getElementById("phLiveThemeHint");
+      if (hint) hint.textContent = previewEmergingThemeForInput(t.value, state.hfSelectedPolarity);
+    } else if (t.id === "zmWordInput") {
+      const hint = document.getElementById("zmLiveThemeHint");
+      if (hint) hint.textContent = previewEmergingThemeForInput(t.value, state.hfSelectedPolarity);
     }
   });
 
   document.addEventListener("click", (ev) => {
-    // Clean backdrop-only close (replaces broken stopPropagation!)
     if (ev.target && ev.target.classList && ev.target.classList.contains("tv-modal-backdrop")) {
       clearAllModals();
       render();
@@ -2723,6 +3908,10 @@
       stepBackOneScreen();
     } else if (act === "go-lobby") {
       goToLobbySlide1(false);
+    } else if (act === "clicker-next") {
+      clickerNextSlide();
+    } else if (act === "clicker-prev") {
+      clickerPrevSlide();
     } else if (act === "zoom-in-target") {
       const tid = btn.getAttribute("data-target-id");
       const gIdx = Number(btn.getAttribute("data-grid-idx"));
@@ -2730,12 +3919,28 @@
       zoomIntoTarget(tid, btn, false, false);
     } else if (act === "go-overview") {
       zoomOutToOverview(false, false);
-    } else if (act === "spin-roulette") {
-      spinAppleTvRoulette();
-    } else if (act === "prev-person") {
-      stepZoomedTarget(-1);
-    } else if (act === "next-person") {
-      stepZoomedTarget(1);
+    } else if (act === "set-hf-polarity") {
+      const pol = btn.getAttribute("data-polarity") === "fears" ? "fears" : "hopes";
+      state.hfSelectedPolarity = pol;
+      renderPreservingFocus();
+    } else if (act === "set-hf-display") {
+      state.hfDisplayMode = btn.getAttribute("data-mode") || "split";
+      renderPreservingFocus();
+    } else if (act === "rename-theme") {
+      const cKey = btn.getAttribute("data-cluster-key") || "";
+      const curT = btn.getAttribute("data-cur-title") || "";
+      if (!cKey) return;
+      const nextT = window.prompt("ปรับชื่อ Emerging Theme (เว้นว่างเพื่อกลับไปใช้ชื่อสังเคราะห์อัตโนมัติ):", curT);
+      if (nextT === null) return;
+      const cleanT = nextT.trim();
+      if (cleanT) state.customThemeTitles.set(cKey, cleanT);
+      else state.customThemeTitles.delete(cKey);
+      saveSessionStore();
+      publishPacket(`${state.sessionId}/theme_rename`, { type: "theme_rename", clusterKey: cKey, newTitle: cleanT }, false);
+      scheduleSnapshotPublish();
+      renderPreservingFocus();
+    } else if (act === "load-hf-demo") {
+      loadHopesFearsDemo(btn.getAttribute("data-demo") || "both");
     } else if (act === "set-detail-tab") {
       const nextTab = btn.getAttribute("data-tab") || "wordcloud";
       if (nextTab !== state.detailTab) pushNavHistory();
@@ -2749,6 +3954,9 @@
     } else if (act === "toggle-stage-composer") {
       state.showComposerOnStage = !state.showComposerOnStage;
       render();
+    } else if (act === "toggle-all-names") {
+      state.showAllNamesFallback = !state.showAllNamesFallback;
+      renderPreservingFocus();
     } else if (act === "open-qr") {
       if (!state.qrModalOpen) pushNavHistory();
       clearAllModals();
@@ -2759,6 +3967,10 @@
       clearAllModals();
       state.identityModalOpen = true;
       render();
+      setTimeout(() => {
+        const pInp = document.getElementById("pin3Input");
+        if (pInp) pInp.focus();
+      }, 40);
     } else if (act === "open-roadmap") {
       if (!state.roadmapModalOpen) pushNavHistory();
       clearAllModals();
@@ -2775,19 +3987,17 @@
       render();
     } else if (act === "select-identity") {
       const uid = btn.getAttribute("data-uid") || "";
-      if (!MEMBER_MAP.has(uid)) return;
-      state.myMemberUid = uid;
-      state.myGuestName = "";
-      sSet("kuchi2569_my_uid", uid);
-      sSet("kuchi2569_guest_name", "");
-      state.identityModalOpen = false;
-      state.phonePickingIdentity = false;
-      playChime([523.25, 659.25, 783.99], 0.09, "triangle", 0.05);
-      publishMyPresence();
-      render();
+      const mem = MEMBER_MAP.get(uid);
+      if (mem) applyIdentityLogin(mem);
     } else if (act === "phone-pick-name") {
       state.phonePickingIdentity = true;
+      state.pinDraft = "";
+      state.pinError = "";
       render();
+      setTimeout(() => {
+        const pInp = document.getElementById("pin3Input");
+        if (pInp) pInp.focus();
+      }, 40);
     } else if (act === "phone-cancel-pick") {
       state.phonePickingIdentity = false;
       render();
@@ -2795,8 +4005,8 @@
       state.phoneJustSubmittedTargetId = "";
       render();
       setTimeout(() => {
-        const w1 = document.getElementById("phW1");
-        if (w1) w1.focus();
+        const el = document.getElementById("phHfInput") || document.getElementById("phW1");
+        if (el) el.focus();
       }, 40);
     } else if (act === "phone-enable-manual") {
       state.phoneManualOverride = true;
@@ -2805,8 +4015,9 @@
       state.phoneManualOverride = false;
       render();
     } else if (act === "phone-manual-target") {
-      const tid = btn.getAttribute("data-target-id") || "m_smart";
+      const tid = btn.getAttribute("data-target-id") || TOPIC_HOPES_ID;
       state.activeTargetId = tid;
+      syncDefaultPolarityWithTarget(tid);
       state.view = "detail";
       state.detailTab = "wordcloud";
       state.phoneJustSubmittedTargetId = "";
@@ -2851,26 +4062,31 @@
     } else if (act === "delete-word-norm") {
       const tid = btn.getAttribute("data-target-id");
       const norm = btn.getAttribute("data-norm");
-      if (tid && norm && state.wordsByTarget.has(tid)) {
-        const mp = state.wordsByTarget.get(tid);
-        Array.from(mp.keys()).forEach((k) => {
-          if (normWordKey(mp.get(k).text) === norm) mp.delete(k);
-        });
-        saveSessionStore();
-        publishPacket(`${state.sessionId}/word_delete`, { type: "word_delete", targetId: tid, normKey: norm }, false);
-        scheduleSnapshotPublish();
-        render();
-      }
+      [tid, TOPIC_HOPES_ID, TOPIC_FEARS_ID].forEach((checkTid) => {
+        if (checkTid && norm && state.wordsByTarget.has(checkTid)) {
+          const mp = state.wordsByTarget.get(checkTid);
+          Array.from(mp.keys()).forEach((k) => {
+            if (normWordKey(mp.get(k).text) === norm) mp.delete(k);
+          });
+          publishPacket(`${state.sessionId}/word_delete`, { type: "word_delete", targetId: checkTid, normKey: norm }, false);
+        }
+      });
+      saveSessionStore();
+      scheduleSnapshotPublish();
+      render();
     } else if (act === "clear-target") {
       const tid = btn.getAttribute("data-target-id");
-      if (tid) {
+      if (tid === TOPIC_HF_BOARD_ID) {
+        state.wordsByTarget.delete(TOPIC_HOPES_ID);
+        state.wordsByTarget.delete(TOPIC_FEARS_ID);
+      } else if (tid) {
         state.wordsByTarget.delete(tid);
         state.ratingsByTarget.delete(tid);
-        saveSessionStore();
-        publishPacket(`${state.sessionId}/clear_target`, { type: "clear_target", targetId: tid }, false);
-        scheduleSnapshotPublish();
-        render();
       }
+      saveSessionStore();
+      publishPacket(`${state.sessionId}/clear_target`, { type: "clear_target", targetId: tid }, false);
+      scheduleSnapshotPublish();
+      render();
     } else if (act === "toggle-fullscreen") {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
       else document.exitFullscreen().catch(() => {});
@@ -2885,7 +4101,8 @@
         exportedAt: new Date().toISOString(),
         session: state.sessionId,
         words: Object.fromEntries(Array.from(state.wordsByTarget.entries()).map(([k, mp]) => [k, Array.from(mp.values())])),
-        ratings: Object.fromEntries(Array.from(state.ratingsByTarget.entries()).map(([k, mp]) => [k, Array.from(mp.values())]))
+        ratings: Object.fromEntries(Array.from(state.ratingsByTarget.entries()).map(([k, mp]) => [k, Array.from(mp.values())])),
+        customThemes: Object.fromEntries(state.customThemeTitles.entries())
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
       const a = document.createElement("a");
@@ -2913,7 +4130,38 @@
     if (!form || !form.getAttribute) return;
     const fType = form.getAttribute("data-form");
 
-    if (fType === "send-word") {
+    if (fType === "pin3-login" || fType === "inline-pin3-login") {
+      ev.preventDefault();
+      const rawPin = form.elements.pin3 ? form.elements.pin3.value : state.pinDraft;
+      const matched = matchMemberByCode(rawPin);
+      if (matched) {
+        applyIdentityLogin(matched);
+      } else {
+        state.pinError = "ไม่พบรหัส 3 ตัวท้ายนี้ในกลุ่มที่ 1 กุฉินารายณ์ (กรอกเช่น 006, 035, 166 หรือ AJ)";
+        renderPreservingFocus();
+      }
+    } else if (fType === "send-hf-postit") {
+      ev.preventDefault();
+      const bucketId = state.hfSelectedPolarity === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      const inp = form.elements.word;
+      if (inp && submitWordBatch(bucketId, [inp.value])) {
+        inp.value = "";
+      }
+    } else if (fType === "phone-send-hf") {
+      ev.preventDefault();
+      const bucketId = state.hfSelectedPolarity === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      const slideId = form.getAttribute("data-slide-id") || state.activeTargetId;
+      const inp = form.elements.hfText;
+      if (!inp || !String(inp.value || "").trim()) {
+        if (inp) inp.focus();
+        return;
+      }
+      if (submitWordBatch(bucketId, [inp.value])) {
+        inp.value = "";
+        state.phoneJustSubmittedTargetId = slideId;
+        render();
+      }
+    } else if (fType === "send-word") {
       ev.preventDefault();
       const tid = form.getAttribute("data-target-id");
       const inp = form.elements.word;
@@ -2944,21 +4192,10 @@
       const sc = form.elements.score ? Number(form.elements.score.value) : state.phoneDraftRating;
       const rs = form.elements.reason ? form.elements.reason.value : "";
       submitRating(tid, sc, rs);
-    } else if (fType === "guest-identity") {
-      ev.preventDefault();
-      const gName = String((form.elements.guestName && form.elements.guestName.value) || "").trim();
-      if (!gName) return;
-      state.myMemberUid = "";
-      state.myGuestName = gName;
-      sSet("kuchi2569_my_uid", "");
-      sSet("kuchi2569_guest_name", gName);
-      state.phonePickingIdentity = false;
-      publishMyPresence();
-      render();
     }
   });
 
-  /* Apple TV D-Pad & Facilitator Keyboard Shortcuts */
+  /* Wireless Clicker (PageDown/PageUp & Arrow Keys) + Apple TV D-Pad */
   document.addEventListener("keydown", (ev) => {
     if (state.role === "participant") return;
     const tag = (ev.target && ev.target.tagName) || "";
@@ -2983,11 +4220,6 @@
 
     if (isTyping) return;
 
-    if (ev.key === "r" || ev.key === "R") {
-      ev.preventDefault();
-      spinAppleTvRoulette();
-      return;
-    }
     if (ev.key === "q" || ev.key === "Q") {
       ev.preventDefault();
       state.qrModalOpen = !state.qrModalOpen;
@@ -3001,17 +4233,28 @@
       return;
     }
 
+    if (ev.key === "PageDown") {
+      ev.preventDefault();
+      clickerNextSlide();
+      return;
+    }
+    if (ev.key === "PageUp") {
+      ev.preventDefault();
+      clickerPrevSlide();
+      return;
+    }
+
     if (state.view === "lobby") {
-      if (ev.key === "ArrowRight" || ev.key === "Enter" || ev.key === " " || ev.key === "PageDown") {
+      if (ev.key === "ArrowRight" || ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
-        zoomOutToOverview(false, false);
+        clickerNextSlide();
       }
       return;
     }
 
     if (state.view === "overview") {
       const gridEl = document.getElementById("tvOverviewGrid");
-      const totalTiles = MEMBERS.length; // 21 exact cards
+      const totalTiles = MEMBERS.length;
       let cols = 7;
       if (gridEl) {
         const tracks = window.getComputedStyle(gridEl).gridTemplateColumns.split(" ").filter(Boolean).length;
@@ -3040,12 +4283,12 @@
         if (tile) tile.click();
       }
     } else if (state.view === "detail") {
-      if (ev.key === "ArrowRight" || ev.key === "PageDown") {
+      if (ev.key === "ArrowRight") {
         ev.preventDefault();
-        stepZoomedTarget(1);
-      } else if (ev.key === "ArrowLeft" || ev.key === "PageUp") {
+        clickerNextSlide();
+      } else if (ev.key === "ArrowLeft") {
         ev.preventDefault();
-        stepZoomedTarget(-1);
+        clickerPrevSlide();
       } else if (ev.key === "Backspace") {
         ev.preventDefault();
         stepBackOneScreen();
@@ -3070,7 +4313,7 @@
     "resize",
     () => {
       if (state.role === "participant") return;
-      if (state.view !== "detail" || state.detailTab !== "wordcloud") return;
+      if (state.view !== "detail") return;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => renderPreservingFocus(), 180);
     },
