@@ -96,32 +96,9 @@
   function isValidWordBucket(id) {
     return TARGET_MAP.has(id) || id === TOPIC_HOPES_ID || id === TOPIC_FEARS_ID;
   }
-
-  /* Sample Demo Inputs for Testing Dynamic Affinity Conceptualization */
-  const DEMO_HOPES_SAMPLES = [
-    "เข้าใจบริบทชีวิตจริงของชาวบ้าน",
-    "เห็นปัจจัยสังคมที่มีผลต่อสุขภาพ (SDH)",
-    "เรียนรู้การทำงานของ รพร. และ รพ.สต.",
-    "เข้าใจระบบสุขภาพปฐมภูมิมากขึ้น",
-    "ได้แรงบันดาลใจการเป็นหมอชุมชน",
-    "สนิทกับเพื่อนในกลุ่ม Kuchi Gang",
-    "นั่งรถไฟไปเที่ยวและกินอาหารอีสานอร่อยๆ",
-    "ทำวิจัยสำรวจชุมชนที่ใช้ประโยชน์ได้จริง",
-    "ฝึกทักษะสื่อสารกับผู้ป่วยในชุมชน",
-    "ได้พักผ่อนและฮีลใจนอกห้องเรียน"
-  ];
-
-  const DEMO_FEARS_SAMPLES = [
-    "งานรายงานและสไลด์เยอะจนพักผ่อนไม่พอ",
-    "กังวลเรื่องการสอบและการตอบคำถามตอนนำเสนอ",
-    "กลัววิเคราะห์สถิติ SPSS ไม่คล่อง",
-    "เก็บข้อมูลแบบสอบถามไม่ครบตามเป้า",
-    "ฟังภาษาอีสาน/ผู้ไทของชาวบ้านไม่เข้าใจ",
-    "เกรงใจชาวบ้านเวลาลงเยี่ยมบ้าน",
-    "นอนบนรถไฟไม่หลับและแปลกที่",
-    "กลัวท้องเสียหรือไม่สบายระหว่างทริป",
-    "การแบ่งงานและประสานงานในกลุ่มใหญ่"
-  ];
+  function isAutoDemoSubId(subId) {
+    return /^(demo_[hf]_|legacy_)/.test(String(subId || ""));
+  }
 
   /* ==========================================================================
      UNIFIED CROSS-POLARITY AFFINITY DIAGRAM & CONCEPTUALIZATION ENGINE
@@ -925,16 +902,27 @@
     sSet("kuchi2569_session", initialSessionId);
   }
 
+  const isFacultyPortalHost = /racm303-2569-faculty-member/i.test(String((window.location && window.location.href) || ""));
+  function isTeacherResultOnly() {
+    return state.role === "facilitator" || (isFacultyPortalHost && state.role !== "participant");
+  }
+
   const state = {
     role: detectedRole, // "facilitator" | "participant" | "explorer"
     view: initialDirectTarget ? "detail" : detectedRole === "facilitator" ? "lobby" : "overview",
     activeTargetId: initialDirectTarget || TOPIC_HF_BOARD_ID,
     detailTab: "wordcloud", // "wordcloud" | "rating"
-    hfDisplayMode: "affinity", // "affinity" (Flipchart Wall เต็มจอ) | "split" (Affinity + Cloud) | "cloud"
+    hfDisplayMode: "affinity", // "affinity" (Miro Board เต็มจอ) | "split" (Miro + Cloud) | "cloud"
     hfSelectedPolarity: "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
     overviewReturningFromId: "",
     isAnimatingZoomOut: false,
     dpadIndex: 0,
+
+    // Miro-style Free-Boundary Pan/Zoom & Auto-Fit Camera State
+    miroCam: { x: 0, y: 0, scale: 1 },
+    miroAutoFit: true,
+    miroLastSig: "",
+    miroNeedsResizeFit: false,
 
     sessionId: initialSessionId,
     pointerSeq: 0,
@@ -952,6 +940,10 @@
     // Participant / Phone Controller State
     followHost: detectedRole === "participant",
     hasSeenFacilitator: false,
+    hostView: "lobby",
+    hostTargetId: TOPIC_HF_BOARD_ID,
+    hostDetailTab: "wordcloud",
+    phonePickedTargetId: "",
     phonePickingIdentity: false,
     phoneManualOverride: false,
     phoneJustSubmittedTargetId: "",
@@ -1090,6 +1082,11 @@
       }
       if (state.phoneJustSubmittedTargetId) {
         state.phoneJustSubmittedTargetId = "";
+        render();
+        return;
+      }
+      if (state.phonePickedTargetId) {
+        state.phonePickedTargetId = "";
         render();
         return;
       }
@@ -1345,6 +1342,7 @@
     state.wordsByTarget.clear();
     state.ratingsByTarget.clear();
     state.customThemeTitles.clear();
+    let purgedDemo = false;
     try {
       const raw = sGet(storageKeyForSession(sessId), "");
       if (!raw) return;
@@ -1354,9 +1352,14 @@
           if (!isValidWordBucket(tid)) return;
           const mp = new Map();
           (parsed.words[tid] || []).forEach((item) => {
-            if (item && item.subId && item.text) mp.set(item.subId, item);
+            if (!item || !item.subId || !item.text) return;
+            if (isAutoDemoSubId(item.subId)) {
+              purgedDemo = true;
+              return;
+            }
+            mp.set(item.subId, item);
           });
-          state.wordsByTarget.set(tid, mp);
+          if (mp.size > 0) state.wordsByTarget.set(tid, mp);
         });
       }
       if (parsed && parsed.ratings) {
@@ -1374,6 +1377,7 @@
           if (parsed.customThemes[k]) state.customThemeTitles.set(k, parsed.customThemes[k]);
         });
       }
+      if (purgedDemo) saveSessionStore();
     } catch (_) {}
   }
 
@@ -1505,29 +1509,54 @@
 
     const normalizedIncomingTarget =
       msg.targetId === TOPIC_HOPES_ID || msg.targetId === TOPIC_FEARS_ID ? TOPIC_HF_BOARD_ID : msg.targetId;
-    const nextView =
+    const hostView =
       msg.view === "detail" && TARGET_MAP.has(normalizedIncomingTarget)
         ? "detail"
         : msg.view === "lobby"
         ? "lobby"
         : "overview";
-    const nextTarget = TARGET_MAP.has(normalizedIncomingTarget) ? normalizedIncomingTarget : state.activeTargetId;
-    const nextTab = msg.detailTab === "rating" ? "rating" : "wordcloud";
+    const hostTarget = TARGET_MAP.has(normalizedIncomingTarget) ? normalizedIncomingTarget : state.hostTargetId || TOPIC_HF_BOARD_ID;
+    const hostTab = msg.detailTab === "rating" ? "rating" : "wordcloud";
 
-    if (state.view !== nextView || state.activeTargetId !== nextTarget || state.detailTab !== nextTab) {
-      const targetChanged = state.activeTargetId !== nextTarget || state.view !== nextView;
-      state.view = nextView;
-      state.activeTargetId = nextTarget;
-      state.detailTab = nextTab;
-      if (targetChanged) {
+    if (state.hostView !== hostView || state.hostTargetId !== hostTarget || state.hostDetailTab !== hostTab) {
+      state.hostView = hostView;
+      state.hostTargetId = hostTarget;
+      state.hostDetailTab = hostTab;
+      changed = true;
+    }
+
+    // Classroom Sync Rules on Student Phone:
+    // - Slide 1 (lobby): Standby check-in
+    // - Slide 2 (Hopes & Fears): Open Hopes & Fears Post-it Pad together
+    // - Once Facilitator reaches Overview 21 คน (or zooms into any member result):
+    //   Student phone opens the 21-Person Picker so students can freely pick any peer & type!
+    let nextPhoneView = "overview";
+    let nextPhoneTarget = state.activeTargetId;
+
+    if (hostView === "lobby") {
+      nextPhoneView = "lobby";
+      state.phonePickedTargetId = "";
+    } else if (hostView === "detail" && hostTarget === TOPIC_HF_BOARD_ID) {
+      nextPhoneView = "detail";
+      nextPhoneTarget = TOPIC_HF_BOARD_ID;
+      state.phonePickedTargetId = "";
+    } else {
+      nextPhoneView = "overview";
+    }
+
+    if (state.view !== nextPhoneView || state.activeTargetId !== nextPhoneTarget) {
+      const targetChanged = state.activeTargetId !== nextPhoneTarget || state.view !== nextPhoneView;
+      state.view = nextPhoneView;
+      state.activeTargetId = nextPhoneTarget;
+      if (targetChanged && !state.phonePickedTargetId) {
         state.phoneJustSubmittedTargetId = "";
-        syncDefaultPolarityWithTarget(nextTarget);
+        syncDefaultPolarityWithTarget(nextPhoneTarget);
       }
       changed = true;
 
-      if (!isInitialBoot && !msg.isHeartbeat && state.role === "participant" && nextView === "detail") {
+      if (!isInitialBoot && !msg.isHeartbeat && state.role === "participant") {
         try {
-          if (navigator.vibrate) navigator.vibrate(35);
+          if (navigator.vibrate) navigator.vibrate(30);
         } catch (_) {}
         playChime([523.25, 783.99], 0.08, "sine", 0.035);
       }
@@ -1546,7 +1575,7 @@
         if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
         const mp = state.wordsByTarget.get(tid);
         (msg.words[tid] || []).forEach((w) => {
-          if (w && w.subId && w.text && !mp.has(w.subId)) {
+          if (w && w.subId && w.text && !isAutoDemoSubId(w.subId) && !mp.has(w.subId)) {
             mp.set(w.subId, w);
             changed = true;
           }
@@ -1665,7 +1694,7 @@
     if (msg.type === "word_add") {
       const tid = String(msg.targetId || "");
       const item = msg.item;
-      if (!tid || !isValidWordBucket(tid) || !item || !item.subId || !item.text) return;
+      if (!tid || !isValidWordBucket(tid) || !item || !item.subId || !item.text || isAutoDemoSubId(item.subId)) return;
       if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
       const mp = state.wordsByTarget.get(tid);
       if (!mp.has(item.subId)) {
@@ -2083,53 +2112,7 @@
     render();
   }
 
-  function loadLegacyDemoForSmart() {
-    const tid = "m_smart";
-    if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
-    const mp = state.wordsByTarget.get(tid);
-    (DATA.legacySampleSmart || []).forEach((sample, idx) => {
-      for (let c = 0; c < sample.count; c += 1) {
-        const subId = `legacy_${idx}_${c}`;
-        mp.set(subId, {
-          subId,
-          text: sample.text,
-          pid: `legacy_p_${(idx + c) % 10}`,
-          memberUid: "",
-          nick: "รุ่นพี่ Kuchi Gang",
-          ts: Date.now()
-        });
-      }
-    });
-    saveSessionStore();
-    scheduleSnapshotPublish();
-    playChime([523.25, 659.25, 783.99, 1046.5], 0.12, "triangle", 0.06);
-    renderPreservingFocus();
-  }
-
-  function loadHopesFearsDemo(mode) {
-    if (mode === "hopes" || mode === "both") {
-      if (!state.wordsByTarget.has(TOPIC_HOPES_ID)) state.wordsByTarget.set(TOPIC_HOPES_ID, new Map());
-      const mpH = state.wordsByTarget.get(TOPIC_HOPES_ID);
-      DEMO_HOPES_SAMPLES.forEach((txt, idx) => {
-        const sid = `demo_h_${idx}`;
-        mpH.set(sid, { subId: sid, text: txt, pid: `demo_p_${idx}`, memberUid: "", nick: "ตัวอย่าง", ts: Date.now() });
-      });
-    }
-    if (mode === "fears" || mode === "both") {
-      if (!state.wordsByTarget.has(TOPIC_FEARS_ID)) state.wordsByTarget.set(TOPIC_FEARS_ID, new Map());
-      const mpF = state.wordsByTarget.get(TOPIC_FEARS_ID);
-      DEMO_FEARS_SAMPLES.forEach((txt, idx) => {
-        const sid = `demo_f_${idx}`;
-        mpF.set(sid, { subId: sid, text: txt, pid: `demo_p_${idx}`, memberUid: "", nick: "ตัวอย่าง", ts: Date.now() });
-      });
-    }
-    saveSessionStore();
-    scheduleSnapshotPublish();
-    playChime([523.25, 659.25, 783.99], 0.11, "triangle", 0.05);
-    renderPreservingFocus();
-  }
-
-  /* ---------- 11. Reusable 3-Digit Student ID Login & Affinity Post-it Renderers ---------- */
+  /* ---------- 11. Reusable 3-Digit Student ID Login & Miro Affinity Renderers ---------- */
   function renderPin3LoginWidgetHtml() {
     const matched = matchMemberByCode(state.pinDraft);
     return `
@@ -2223,8 +2206,9 @@
   }
 
   function renderAffinityClusterCardHtml(cluster) {
+    const isWide = cluster.notes.length >= 7;
     return `
-      <article class="aff-cluster-card">
+      <article class="aff-cluster-card${isWide ? " is-wide-cluster" : ""}">
         <div class="aff-cluster-top">
           <h3 class="aff-cluster-title">
             <span>${cluster.icon}</span> ${esc(cluster.title)}
@@ -2286,38 +2270,6 @@
     const syn = synthesizeUnifiedAffinityWall(hopesAgg.items, fearsAgg.items);
     const mergedAgg = getAggregatedWords(TOPIC_HF_BOARD_ID);
 
-    if (syn.totalVotes === 0) {
-      return `
-        <div class="zm-thematic-stage">
-          <section class="aff-unified-board">
-            <div class="aff-board-tape-banner">HOPES &amp; FEARS</div>
-            <div class="aff-synth-banner">
-              <span>🧠 <strong>Dynamic Affinity Diagram (Conceptualization):</strong> พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌱 Hope (Post-it เขียวอ่อน)</strong> หรือ <strong>🌸 Fear (Post-it ชมพูอ่อน)</strong> — ระบบจัดกลุ่มทั้ง Hope และ Fear ที่มีประเด็นเดียวกันไว้ในวง Emerging Theme เดียวกันอัตโนมัติ!</span>
-            </div>
-            <div style="padding:26px 16px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
-              <div style="display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap">
-                <div class="aff-sticky-note is-hopes" style="width:152px;min-height:92px;transform:rotate(-3deg)">
-                  <div class="postit-kicker-row"><span class="postit-kicker-tag">Hope</span></div>
-                  <div class="postit-text">ความหวังต่อการเรียนรู้และประสบการณ์ (เขียวอ่อน)</div>
-                </div>
-                <div class="aff-sticky-note is-fears" style="width:152px;min-height:92px;transform:rotate(2.5deg)">
-                  <div class="postit-kicker-row"><span class="postit-kicker-tag">Fear</span></div>
-                  <div class="postit-text">ความกังวลในการวน COMMED 5–6 สัปดาห์ (ชมพูอ่อน)</div>
-                </div>
-              </div>
-              <div style="font-size:14px;color:#57534e;max-width:680px;line-height:1.5">
-                ยังไม่มีแผ่น Post-it บนกระดาษ Flipchart — สแกน QR Code ส่งจากมือถือ หรือพิมพ์จากช่องด้านล่างได้เลย (ในแต่ละวง Emerging Theme จะรวมทั้งแผ่นสีเขียวอ่อนและสีชมพูอ่อนที่อยู่ในประเด็นเดียวกัน)
-              </div>
-              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
-                <button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="both">✨ ทดลองโหลดตัวอย่าง Post-it (Hope + Fear)</button>
-              </div>
-            </div>
-          </section>
-        </div>
-      `;
-    }
-
     const cloudPositioned = computeAdaptiveWordCloud(mergedAgg.items, state.hfDisplayMode === "split");
     const cloudCanvasHtml = `
       <div class="zm-cloud-canvas">
@@ -2343,15 +2295,54 @@
       return `<div class="zm-cloud-body">${cloudCanvasHtml}</div>`;
     }
 
-    const unifiedFlipchartWallHtml = `
-      <section class="aff-unified-board">
-        <div class="aff-board-tape-banner">HOPES &amp; FEARS</div>
-        <div class="aff-synth-banner">
-          <span>🧠 <strong>Dynamic Conceptualization:</strong> ${esc(syn.summaryLine)}</span>
-          <span style="font-size:12px;color:#57534e">แต่ละวง Emerging Theme รวมทั้ง 🌱 Hope (เขียวอ่อน) และ 🌸 Fear (ชมพูอ่อน) · กด ✏️ เพื่อปรับชื่อธีมสดๆ</span>
+    const K = syn.clusters.length;
+    const cols = K <= 1 ? 1 : K <= 4 ? 2 : K <= 9 ? 3 : 4;
+    const miroSig =
+      syn.totalVotes === 0
+        ? "empty"
+        : `${K}:${syn.totalHopes}:${syn.totalFears}:${mergedAgg.items.map((x) => `${x.key}_${x.count}`).join("|")}:${Array.from(
+            state.customThemeTitles.entries()
+          )
+            .map((e) => e.join("="))
+            .join("|")}`;
+
+    const miroBoardHtml = `
+      <section class="miro-viewport" id="miroBoardViewport" data-miro-sig="${esc(miroSig)}" aria-label="บอร์ด Miro Hopes and Fears">
+        ${
+          syn.totalVotes > 0
+            ? `
+              <div class="miro-hud-status">
+                <span>📌 ${syn.clusters.length} Emerging Themes</span>
+                <span>·</span>
+                <span style="color:#15803d">🌱 Hope ${syn.totalHopes}</span>
+                <span>·</span>
+                <span style="color:#be185d">🌸 Fear ${syn.totalFears}</span>
+              </div>
+            `
+            : ""
+        }
+        <div class="miro-world" id="miroBoardWorld">
+          ${
+            syn.totalVotes > 0
+              ? `
+                <div class="miro-clusters-canvas" style="grid-template-columns:repeat(${cols},max-content)">
+                  ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+                </div>
+              `
+              : ""
+          }
         </div>
-        <div class="aff-clusters-grid">
-          ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+        <div class="miro-hud-controls" role="toolbar" aria-label="ควบคุมการซูมและจัดกึ่งกลางบอร์ด">
+          <button type="button" class="miro-ctrl-btn" data-act="miro-zoom-out" title="ซูมออก">−</button>
+          <span class="miro-zoom-readout" id="miroZoomReadout">${Math.round(state.miroCam.scale * 100)}%</span>
+          <button type="button" class="miro-ctrl-btn" data-act="miro-zoom-in" title="ซูมเข้า">+</button>
+          <button
+            type="button"
+            class="miro-ctrl-btn ${state.miroAutoFit ? "is-fit-active" : ""}"
+            id="miroFitBtn"
+            data-act="miro-fit-all"
+            title="ปรับขนาดให้พอดีกับ Post-it ทั้งหมดอัตโนมัติ (Optimized Auto-Fit)"
+          >⊡ Fit พอดี</button>
         </div>
       </section>
     `;
@@ -2360,7 +2351,7 @@
       return `
         <div class="zm-thematic-stage">
           <div class="zm-split-thematic">
-            ${unifiedFlipchartWallHtml}
+            ${miroBoardHtml}
             <div class="zm-split-cloud-pane">
               <div class="zm-split-cloud-label">
                 <span>☁️ Word Cloud รวม (${mergedAgg.totalSubmissions} แผ่น)</span>
@@ -2375,10 +2366,9 @@
       `;
     }
 
-    // Default "affinity": Full-Screen Kraft-Paper Flipchart Wall ("HOPES & FEARS") with Mixed Green & Pink Post-its per Theme!
     return `
       <div class="zm-thematic-stage">
-        ${unifiedFlipchartWallHtml}
+        ${miroBoardHtml}
       </div>
     `;
   }
@@ -2442,11 +2432,13 @@
                     📱 <span>QR (${onlineMembers.size}/21)</span>
                   </button>
                 `
-                : `
+                : isFacultyPortalHost
+                ? `
                   <a class="tv-pill-btn is-facilitator" href="${esc(getFacilitatorUrl())}" title="เปิดลิงก์ Facilitator สำหรับคุมจอใหญ่">
                     🎛️ <span>Facilitator</span>
                   </a>
                 `
+                : ""
             }
 
             <button
@@ -2463,9 +2455,15 @@
             <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀</button>
             <button type="button" class="tv-pill-btn is-primary" data-act="clicker-next" title="สไลด์ถัดไป (PageDown / →)">ถัดไป ▶</button>
 
-            <button type="button" class="tv-pill-btn" data-act="open-identity" title="ยืนยันตัวตนด้วยรหัส นศพ. 3 ตัวท้าย">
-              👤 <span>${esc(myLabel)}</span>
-            </button>
+            ${
+              !isTeacherResultOnly()
+                ? `
+                  <button type="button" class="tv-pill-btn" data-act="open-identity" title="ยืนยันตัวตนด้วยรหัส นศพ. 3 ตัวท้าย">
+                    👤 <span>${esc(myLabel)}</span>
+                  </button>
+                `
+                : ""
+            }
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="open-roadmap" title="แผนการเดินทางรถไฟ 10–19 ธ.ค. & 5 วัตถุประสงค์">
               🗺️ <span>ภารกิจ</span>
@@ -2667,10 +2665,14 @@
     `;
   }
 
-  /* --- Bottom Composer Dock on Stage --- */
+  /* --- Bottom Composer Dock on Stage (Student Side Only; Teacher / Facilitator = Result Only!) --- */
   function renderStageBottomComposerHtml(tObj, agg) {
+    // Teacher / Facilitator side ONLY views results (no bottom input box!)
+    if (isTeacherResultOnly()) {
+      return "";
+    }
+
     const m = tObj.member;
-    const isFac = state.role === "facilitator";
     const hasIdentity = Boolean(state.myMemberUid || state.myGuestName);
     const isSelfTarget = Boolean(m && state.myMemberUid && state.myMemberUid === m.uid);
 
@@ -2680,7 +2682,7 @@
         <div class="zm-self-lock-dock">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="font-size:15px;font-weight:800;color:#92400e">
-              🌟 สไลด์ของ '${esc(m.mentiName)}' (บัญชีที่คุณ Login อยู่) — ปิดช่องพิมพ์สำหรับเจ้าของชื่อ รอรับคำสะท้อนจากทุกคนขึ้นจอ!
+              🌟 สไลด์ของ '${esc(m.mentiName)}' (บัญชีที่คุณ Login อยู่) — ปิดช่องพิมพ์สำหรับเจ้าของชื่อ รอรับคำสะท้อนจากเพื่อนๆ ขึ้นจอ!
             </span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2691,8 +2693,8 @@
       `;
     }
 
-    // 2. Explorer on a person slide without 3-digit login yet
-    if (m && !hasIdentity && !isFac) {
+    // 2. Student Explorer on a person slide without 3-digit login yet
+    if (m && !hasIdentity) {
       return `
         <form class="zm-composer-dock" data-form="inline-pin3-login">
           <div class="zm-composer-row">
@@ -2703,8 +2705,8 @@
               class="zm-word-input"
               inputmode="numeric"
               maxlength="7"
-              placeholder="เช่น 006, 035, 166 (อาจารย์พิมพ์ AJ)"
-              style="max-width:280px"
+              placeholder="เช่น 006, 035, 166"
+              style="max-width:260px"
             />
             <button type="submit" class="zm-send-btn">ยืนยันรหัส</button>
             <button type="button" class="tv-pill-btn" data-act="open-identity">เลือกจากรายชื่อ</button>
@@ -2714,23 +2716,7 @@
       `;
     }
 
-    // 3. Collapsed composer bar
-    if (!state.showComposerOnStage) {
-      return `
-        <div class="zm-fac-footer">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button type="button" class="tv-pill-btn" data-act="open-qr">📱 QR เข้าห้อง</button>
-            <span style="font-size:13px;font-weight:700;color:#059669">📡 มือถือทุกเครื่องซิงค์อยู่ที่โจทย์นี้</span>
-          </div>
-          <div class="zm-fac-stat-pill">
-            💬 ส่งเข้ามาแล้ว ${agg.totalSubmissions} รายการ
-          </div>
-          <button type="button" class="tv-pill-btn is-primary" data-act="toggle-stage-composer">⌨️ แสดงช่องพิมพ์ Post-it / คำตอบ</button>
-        </div>
-      `;
-    }
-
-    // 4. HOPES / FEARS / AFFINITY BOARD Composer: Text Input -> Choose Hope (เขียวอ่อน) or Fear (ชมพูอ่อน) -> Submit!
+    // 3. HOPES & FEARS Composer (Student Desktop/Tablet View): Text Input -> Choose Hope (เขียวอ่อน) or Fear (ชมพูอ่อน) -> Submit!
     if (tObj.isHfMode) {
       const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
       const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
@@ -2741,7 +2727,7 @@
 
       return `
         <form class="zm-composer-dock" data-form="send-hf-postit" data-target-id="${targetBucketId}">
-          <div class="zm-composer-row" style="max-width:1180px;flex-wrap:wrap">
+          <div class="zm-composer-row" style="max-width:1160px;flex-wrap:wrap">
             <input
               type="text"
               id="zmWordInput"
@@ -2749,7 +2735,8 @@
               class="zm-word-input"
               style="${inputTintStyle};font-weight:700"
               autocomplete="off"
-              placeholder="${selPol === "fears" ? "พิมพ์ความกังวล (Fear) ของคุณที่นี่..." : "พิมพ์ความหวัง (Hope) ของคุณที่นี่..."}"
+              placeholder=""
+              aria-label="${selPol === "fears" ? "พิมพ์ความกังวล (Fear)" : "พิมพ์ความหวัง (Hope)"}"
               maxlength="72"
             />
             <div class="hf-choice-group" role="group" aria-label="เลือกว่าเป็น Hope หรือ Fear">
@@ -2771,20 +2758,12 @@
               </button>
             </div>
             <button type="submit" class="zm-send-btn">📌 แปะ Post-it</button>
-            ${isFac ? `<button type="button" class="tv-pill-btn hide-mobile" data-act="toggle-stage-composer">ซ่อนช่องพิมพ์</button>` : ""}
-          </div>
-          <div id="zmLiveThemeHint" style="text-align:center;font-size:12px;font-weight:700;color:${selPol === "fears" ? "#9f1239" : "#166534"}">
-            ${esc(previewEmergingThemeForInput("", selPol))}
           </div>
         </form>
       `;
     }
 
-    // 5. Standard Person / Trip Reflection Composer
-    const phText = m
-      ? `พิมพ์คำ หรือประโยคสั้นๆ ที่สะท้อน '${m.mentiName}'...`
-      : "พิมพ์ความคาดหวังต่อทริป รพร.กุฉินารายณ์...";
-
+    // 4. Standard Person / Trip Reflection Composer (Student View)
     return `
       <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
         <div class="zm-composer-row">
@@ -2794,14 +2773,14 @@
             name="word"
             class="zm-word-input"
             autocomplete="off"
-            placeholder="${esc(phText)}"
+            placeholder=""
+            aria-label="พิมพ์คำสะท้อน"
             maxlength="54"
           />
           <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
           <span class="hide-mobile" style="font-size:12.5px;font-weight:800;color:#1d4ed8;white-space:nowrap">
             💬 ${agg.totalSubmissions} คำ (${agg.uniqueRespondents} คน)
           </span>
-          ${isFac ? `<button type="button" class="tv-pill-btn hide-mobile" data-act="toggle-stage-composer">ซ่อนช่องพิมพ์</button>` : ""}
         </div>
         <div class="zm-emoji-bar">
           ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
@@ -3029,20 +3008,7 @@
                             .join("")}
                         </div>
                       `
-                      : `
-                        <div class="zm-empty-prompt">
-                          <strong>💬 ส่งคำหรือประโยคสะท้อนตัวตนของ '${esc(tObj.shortTitle)}' กันเลย!</strong>
-                          <p>พิมพ์คำหรือประโยคสั้นๆ จากมือถือหรือช่องด้านล่างได้เลย (ยกเว้นเจ้าของชื่อในสไลด์นั้น)</p>
-                          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                            <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
-                            ${
-                              m && m.uid === "m_smart"
-                                ? `<button type="button" class="tv-pill-btn" data-act="load-smart-demo">✨ โหลดตัวอย่างคำรุ่นพี่ Kuchi Gang</button>`
-                                : ""
-                            }
-                          </div>
-                        </div>
-                      `
+                      : `<div class="zm-cloud-canvas"></div>`
                   }
                 </div>
 
@@ -3113,20 +3079,15 @@
       );
     }
 
-    // Step 2: Standby View when Facilitator is on Slide 1 or Overview
-    if (state.view !== "detail" && !state.phoneManualOverride) {
-      const stageLabel =
-        state.view === "lobby"
-          ? "📱 จอใหญ่กำลังอยู่ที่ Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน"
-          : "⊞ จอใหญ่กำลังอยู่ที่หน้าภาพรวม 21 คน (รออาจารย์เลือกโจทย์ถัดไป...)";
-
+    // Step 2A: Standby View ONLY when Facilitator is still on Slide 1 (QR Lobby)
+    if (state.view === "lobby" && !state.phoneManualOverride && !state.phonePickedTargetId) {
       return (
         topBar +
         `
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>📡 เชื่อมต่อจอใหญ่สำเร็จ · เปลี่ยนข้อตาม Facilitator อัตโนมัติ</span>
+                <span>📡 เชื่อมต่อจอใหญ่สำเร็จ · รอเริ่มพร้อมกัน</span>
               </div>
 
               <div class="ph-standby-box">
@@ -3139,53 +3100,93 @@
                 </div>
                 <h2 style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0f172a">สวัสดี ${esc(myDisplayName)}! เช็คอินเรียบร้อย ✅</h2>
                 <div style="padding:6px 14px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:13px;font-weight:700">
-                  ${stageLabel}
+                  📱 จอใหญ่กำลังอยู่ที่ Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน
                 </div>
                 <p style="margin:2px 0 0;font-size:14.5px;color:#475569;line-height:1.5;max-width:440px">
-                  👀 <strong>เงยหน้าดูจอใหญ่พร้อมกัน</strong> — ทันทีที่อาจารย์กด Clicker ไปโจทย์ถัดไป หน้าจอมือถือนี้จะเปิดกระดาษ Post-it / ช่องพิมพ์คำตอบให้อัตโนมัติ!
+                  👀 ทันทีที่อาจารย์กดไปสไลด์ถัดไป หน้าจอมือถือนี้จะเปิดกระดาษ Post-it / หน้าเลือกคนพิมพ์ให้อัตโนมัติ!
                 </p>
               </div>
 
-              ${
-                !state.hasSeenFacilitator
-                  ? `
-                    <div style="border-top:1px dashed #e2e8f0;padding-top:12px;text-align:center">
-                      <button type="button" class="tv-pill-btn" data-act="phone-enable-manual">
-                        เลือกหัวข้อเพื่อส่งคำตอบด้วยตัวเอง (กรณีไม่ได้เปิดจอ Facilitator)
-                      </button>
-                    </div>
-                  `
-                  : ""
-              }
+              <div style="border-top:1px dashed #e2e8f0;padding-top:12px;text-align:center">
+                <button type="button" class="tv-pill-btn" data-act="phone-enable-manual">
+                  เข้าหน้าเลือกหัวข้อ / เลือกคนพิมพ์ทันที →
+                </button>
+              </div>
             </section>
           </main>
         `
       );
     }
 
-    if (state.phoneManualOverride && state.view !== "detail") {
+    // Step 2B: Once Facilitator reaches Overview 21 คน (or browses member results), OR manual mode -> Student Picker Grid!
+    const isOnHfSlide = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID && !state.phonePickedTargetId;
+    if (!isOnHfSlide && !state.phonePickedTargetId) {
+      const hostObj = state.hostView === "detail" ? TARGET_MAP.get(state.hostTargetId) : null;
+      const hostMem = hostObj && hostObj.member ? hostObj.member : null;
+      const canJumpHostMem = Boolean(hostMem && (!state.myMemberUid || state.myMemberUid !== hostMem.uid));
+
       return (
         topBar +
         `
           <main class="ph-shell">
             <section class="ph-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-                <strong style="font-size:16.5px">เลือกหัวข้อหรือสมาชิกที่ต้องการตอบ</strong>
-                <button type="button" class="tv-pill-btn" data-act="phone-disable-manual">กลับโหมดรอจอใหญ่</button>
+              <div class="ph-sync-banner">
+                <span>✍️ แตะเลือกคนในกลุ่มเพื่อพิมพ์คำสะท้อนตัวตนได้เลย!</span>
               </div>
-              <button type="button" class="tv-pill-btn" style="height:42px;width:100%;background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a" data-act="phone-manual-target" data-target-id="${TOPIC_HF_BOARD_ID}">
-                📌 บอร์ด Hopes &amp; Fears (Post-it เขียวอ่อน &amp; ชมพูอ่อน)
-              </button>
-              <div class="id-picker-grid">
-                ${MEMBERS.map(
-                  (m) => `
-                    <button type="button" class="id-picker-card" data-act="phone-manual-target" data-target-id="${esc(m.uid)}">
-                      <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
-                      <strong>${esc(m.nickname)}</strong>
-                      <span>${esc(m.kind === "student" ? m.shortNo : "AJ")}</span>
-                    </button>
+
+              ${
+                hostMem
+                  ? `
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;flex-wrap:wrap">
+                      <span style="font-size:13px;font-weight:700;color:#1e40af">📺 จอใหญ่กำลังเปิดดูผลของ <strong>'${esc(hostMem.mentiName)}'</strong></span>
+                      ${
+                        canJumpHostMem
+                          ? `<button type="button" class="tv-pill-btn is-primary" style="height:28px;font-size:12px;padding:0 10px" data-act="phone-pick-peer" data-target-id="${esc(hostMem.uid)}">พิมพ์ให้ '${esc(hostMem.nickname)}' →</button>`
+                          : `<span style="font-size:12px;font-weight:800;color:#92400e">🌟 การ์ดของคุณเอง</span>`
+                      }
+                    </div>
                   `
-                ).join("")}
+                  : ""
+              }
+
+              <div class="id-picker-grid">
+                ${MEMBERS.map((memItem) => {
+                  const isMe = Boolean(state.myMemberUid && state.myMemberUid === memItem.uid);
+                  const sentCnt = getMySentWordsForTarget(memItem.uid).length;
+                  if (isMe) {
+                    return `
+                      <div class="id-picker-card" style="opacity:0.55;cursor:not-allowed;background:#fefce8;border-color:#fde68a" title="ปิดช่องพิมพ์สำหรับการ์ดของตัวเอง">
+                        <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
+                        <strong>${esc(memItem.nickname)}</strong>
+                        <span style="color:#92400e;font-weight:800">🌟 ตัวคุณเอง</span>
+                      </div>
+                    `;
+                  }
+                  return `
+                    <button
+                      type="button"
+                      class="id-picker-card"
+                      style="${sentCnt > 0 ? "border-color:#86efac;background:#f0fdf4" : ""}"
+                      data-act="phone-pick-peer"
+                      data-target-id="${esc(memItem.uid)}"
+                    >
+                      <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
+                      <strong>${esc(memItem.nickname)}</strong>
+                      <span style="${sentCnt > 0 ? "color:#15803d;font-weight:800" : ""}">
+                        ${sentCnt > 0 ? `✓ ส่งแล้ว (${sentCnt})` : esc(memItem.kind === "student" ? memItem.shortNo : "อาจารย์")}
+                      </span>
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+
+              <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed #e2e8f0">
+                <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a" data-act="phone-pick-peer" data-target-id="${TOPIC_HF_BOARD_ID}">
+                  📌 Hopes &amp; Fears
+                </button>
+                <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6" data-act="phone-pick-peer" data-target-id="${TOPIC_TRIP_ID}">
+                  🚂 ทริปกุฉินารายณ์
+                </button>
               </div>
             </section>
           </main>
@@ -3193,15 +3194,17 @@
       );
     }
 
-    // Step 3: Active Slide on Phone
-    const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
+    // Step 3: Active Slide on Phone (either Slide 2 Hopes & Fears OR Student's Picked Person!)
+    const effectiveTargetId = state.phonePickedTargetId || state.activeTargetId || TOPIC_HF_BOARD_ID;
+    const tObj = TARGET_MAP.get(effectiveTargetId) || TARGET_LIST[0];
     const m = tObj.member;
     const isSelfTarget = Boolean(m && state.myMemberUid && state.myMemberUid === m.uid);
     const mySentWords = getMySentWordsForTarget(tObj.id);
     const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
     const myPrevRating = rMap.get(persistentPid);
+    const canBackToPicker = Boolean(state.phonePickedTargetId || state.phoneManualOverride || state.hostView !== "detail" || state.hostTargetId !== TOPIC_HF_BOARD_ID);
 
-    // 3A. HOPES / FEARS / AFFINITY BOARD Post-it Pad on Phone!
+    // 3A. HOPES & FEARS Post-it Pad on Phone!
     if (tObj.isHfMode) {
       const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
       const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
@@ -3215,8 +3218,8 @@
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>📌 Hopes &amp; Fears Post-it · จัดกลุ่ม Affinity อัตโนมัติบนจอใหญ่</span>
-                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
+                <span>📌 Hopes &amp; Fears Post-it</span>
+                ${state.phonePickedTargetId ? `<button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-back-picker">⊞ เลือกคน (21 คน)</button>` : ""}
               </div>
 
               <h1 class="ph-big-question">${questionHtml}</h1>
@@ -3227,7 +3230,7 @@
                     <div class="ph-standby-box" style="background:${selPol === "fears" ? "#fdf2f8;border:1.5px solid #f472b6" : "#f7fee7;border:1.5px solid #84cc16"};border-radius:20px;padding:22px 16px">
                       <div style="font-size:36px;line-height:1">📌</div>
                       <strong style="font-size:19px;color:#0f172a">แปะ Post-it ขึ้นบอร์ดใหญ่เรียบร้อยแล้ว!</strong>
-                      <p style="margin:0;font-size:14px;color:#475569">👀 เงยหน้าดูการจัดกลุ่ม <strong>Emerging Themes (Affinity Diagram)</strong> บนจอใหญ่พร้อมกันเลย!</p>
+                      <p style="margin:0;font-size:14px;color:#475569">👀 เงยหน้าดูบอร์ด <strong>Hopes &amp; Fears</strong> บนจอใหญ่พร้อมกันเลย!</p>
                       ${
                         mySentWords.length
                           ? `
@@ -3248,7 +3251,7 @@
                     <form data-form="phone-send-hf" data-slide-id="${esc(tObj.id)}" data-target-id="${targetBucketId}" style="display:flex;flex-direction:column;gap:12px">
                       <div class="ph-postit-pad ${selPol === "fears" ? "is-fears" : "is-hopes"}">
                         <div style="display:flex;justify-content:space-between;align-items:center">
-                          <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear (ความกังวล)" : "Hope (ความหวัง)"}</span>
+                          <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear" : "Hope"}</span>
                           <span style="font-size:11.5px;font-weight:800;opacity:0.8">${selPol === "fears" ? "🌸 Post-it ชมพูอ่อน" : "🌱 Post-it เขียวอ่อน"}</span>
                         </div>
                         <textarea
@@ -3256,16 +3259,10 @@
                           name="hfText"
                           class="ph-postit-textarea"
                           maxlength="72"
-                          placeholder="${selPol === "fears" ? "พิมพ์ความกังวลของคุณในการวนรายวิชา COMMED..." : "พิมพ์ความหวังต่อการเรียนรู้และประสบการณ์ใน COMMED..."}"
+                          placeholder=""
                         ></textarea>
-                        <div id="phLiveThemeHint" style="font-size:12px;font-weight:700;opacity:0.88">
-                          ${esc(previewEmergingThemeForInput("", selPol))}
-                        </div>
                       </div>
 
-                      <div style="font-size:13px;font-weight:800;color:#334155;text-align:center">
-                        เลือกประเภทแผ่น Post-it ของข้อความนี้:
-                      </div>
                       <div class="ph-hf-selector-grid">
                         <button
                           type="button"
@@ -3297,77 +3294,11 @@
       );
     }
 
-    // 3B. Rating Scale 1–5 Controller on Phone
+    // 3B. Self-Slide Protection
     const bigQuestionHtml = m
       ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
       : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
 
-    if (state.detailTab === "rating" && m) {
-      const currentVal = myPrevRating ? Number(myPrevRating.score) : state.phoneDraftRating;
-      return (
-        topBar +
-        `
-          <main class="ph-shell">
-            <section class="ph-card">
-              <div class="ph-sync-banner">
-                <span>⭐ โหมดให้คะแนน 1–5 · ดูผลกราฟสดบนจอใหญ่</span>
-                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
-              </div>
-
-              <div class="ph-person-banner">
-                <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
-                <div>
-                  <div style="font-size:12px;font-weight:800;color:#2563eb">${esc(isSelfTarget ? "🌟 การ์ดของคุณเอง!" : `KUCHI GANG · ${m.nickname}`)}</div>
-                  <div style="font-size:18px;font-weight:800;color:#0f172a">${esc(m.mentiName)}</div>
-                  <div style="font-size:12.5px;color:#64748b">${esc(m.fullName)}</div>
-                </div>
-              </div>
-
-              <h1 class="ph-big-question" style="font-size:18px">
-                คิดว่าภาพรวม Word Cloud บนจอใหญ่สะท้อนตัวตนจริงของ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ได้ตรงแค่ไหน?
-              </h1>
-
-              <form data-form="phone-send-rating" data-target-id="${esc(m.uid)}" style="display:flex;flex-direction:column;gap:14px">
-                <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:18px;padding:16px;text-align:center">
-                  <div id="phRatingReadout" style="font-size:34px;font-weight:900;color:#2563eb;line-height:1">${currentVal.toFixed(1)} <span style="font-size:16px;color:#64748b">/ 5.0</span></div>
-                  <input
-                    type="range"
-                    id="phRatingSlider"
-                    name="score"
-                    min="1"
-                    max="5"
-                    step="0.5"
-                    value="${currentVal}"
-                    style="width:100%;margin:14px 0 8px;accent-color:#2563eb;height:28px;cursor:pointer"
-                  />
-                  <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b">
-                    <span>1 · ไม่ตรงเลย</span>
-                    <span>3 · ปานกลาง</span>
-                    <span>5 · ตรงที่สุด!</span>
-                  </div>
-                </div>
-
-                <input
-                  type="text"
-                  id="phReasonInput"
-                  name="reason"
-                  class="ph-answer-input"
-                  placeholder="เหตุผลสั้นๆ เพิ่มเติม (ไม่บังคับ)..."
-                  maxlength="120"
-                  value="${esc(myPrevRating ? myPrevRating.reason || "" : "")}"
-                />
-
-                <button type="submit" class="ph-submit-btn">
-                  ${myPrevRating ? "🔄 อัปเดตคะแนนขึ้นจอใหญ่" : "⭐ ส่งคะแนนขึ้นจอใหญ่!"}
-                </button>
-              </form>
-            </section>
-          </main>
-        `
-      );
-    }
-
-    // 3C-Self: Logged-in Student is Viewing Their OWN Person Slide -> Hide Input!
     if (isSelfTarget && m) {
       return (
         topBar +
@@ -3375,19 +3306,21 @@
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner" style="background:linear-gradient(135deg,#fefce8,#eff6ff);border-color:#fde68a;color:#92400e">
-                <span>🌟 ตอนนี้เป็นสไลด์ของตัวคุณเอง!</span>
-                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+                <span>🌟 ตอนนี้เป็นการ์ดของตัวคุณเอง!</span>
+                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-back-picker">⊞ เลือกพิมพ์ให้เพื่อนคนอื่น</button>
               </div>
 
               <div class="ph-standby-box" style="background:#fefce8;border:1.5px solid #fde68a;border-radius:20px;padding:24px 16px">
                 <div class="ph-pulse-ring">
                   <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
                 </div>
-                <strong style="font-size:20px;color:#78350f">รอบนี้เป็นโจทย์ของ '${esc(m.mentiName)}' ✨</strong>
+                <strong style="font-size:20px;color:#78350f">การ์ดของ '${esc(m.mentiName)}' ✨</strong>
                 <p style="margin:0;font-size:14.5px;color:#92400e;line-height:1.5">
-                  ระบบ<strong>ปิดช่องพิมพ์สำหรับเจ้าของชื่อ</strong> เพื่อให้เพื่อนๆ และอาจารย์ช่วยกันส่งคำสะท้อนตัวตนของคุณ<br/>
-                  👀 <strong>เงยหน้าดูผล Live Word Cloud ของคุณบนจอใหญ่พร้อมกันเลย!</strong>
+                  ระบบปิดช่องพิมพ์สำหรับเจ้าของชื่อ — กดปุ่มด้านล่างเพื่อเลือกพิมพ์คำสะท้อนให้เพื่อนคนอื่นได้เลย!
                 </p>
+                <button type="button" class="ph-submit-btn" style="margin-top:8px" data-act="phone-back-picker">
+                  ⊞ กลับหน้าเลือกคน (21 คน)
+                </button>
               </div>
             </section>
           </main>
@@ -3395,7 +3328,7 @@
       );
     }
 
-    // 3D. Full Type-Answer Controller for Peer Reflection Slides
+    // 3C. Full Type-Answer Controller for Peer Reflection Slides
     const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
 
     return (
@@ -3404,8 +3337,8 @@
         <main class="ph-shell">
           <section class="ph-card">
             <div class="ph-sync-banner">
-              <span>✍️ Full Type-Answer · ส่งคำตอบขึ้นจอใหญ่</span>
-              ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนข้อ</button>` : ""}
+              <span>✍️ ส่งคำสะท้อนขึ้นจอใหญ่</span>
+              ${canBackToPicker ? `<button type="button" class="tv-pill-btn is-primary" style="height:28px;font-size:12px;padding:0 11px" data-act="phone-back-picker">⊞ เลือกคนอื่น (21 คน)</button>` : ""}
             </div>
 
             <div class="ph-person-banner">
@@ -3430,8 +3363,7 @@
                 ? `
                   <div class="ph-standby-box" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:20px;padding:22px 16px">
                     <div style="font-size:38px;line-height:1">🎉</div>
-                    <strong style="font-size:19px;color:#14532d">ส่งคำตอบขึ้นจอใหญ่แล้ว!</strong>
-                    <p style="margin:0;font-size:14px;color:#166534">👀 เงยหน้าดูผล <strong>Live Word Cloud</strong> บนจอใหญ่พร้อมกับเพื่อนๆ ได้เลย!</p>
+                    <strong style="font-size:19px;color:#14532d">ส่งคำสะท้อนให้ '${esc(tObj.shortTitle)}' เรียบร้อย!</strong>
                     ${
                       mySentWords.length
                         ? `
@@ -3443,9 +3375,14 @@
                         `
                         : ""
                     }
-                    <button type="button" class="ph-submit-btn" style="margin-top:10px" data-act="phone-more-words">
-                      ➕ ส่งคำหรือประโยคเพิ่มอีก
-                    </button>
+                    <div style="display:flex;flex-direction:column;gap:8px;width:100%;margin-top:10px">
+                      <button type="button" class="ph-submit-btn" data-act="phone-back-picker">
+                        ⊞ เลือกพิมพ์ให้คนต่อไป (21 คน)
+                      </button>
+                      <button type="button" class="tv-pill-btn" style="height:40px;width:100%" data-act="phone-more-words">
+                        ➕ พิมพ์เพิ่มให้ '${esc(m ? m.nickname : tObj.shortTitle)}' อีก
+                      </button>
+                    </div>
                   </div>
                 `
                 : `
@@ -3459,7 +3396,7 @@
                           name="w1"
                           class="ph-answer-input"
                           autocomplete="off"
-                          placeholder="พิมพ์คำ หรือประโยคสะท้อนตัวตน..."
+                          placeholder=""
                           maxlength="54"
                         />
                       </div>
@@ -3471,7 +3408,7 @@
                           name="w2"
                           class="ph-answer-input"
                           autocomplete="off"
-                          placeholder="เพิ่มคำที่ 2 (ไม่บังคับ)..."
+                          placeholder=""
                           maxlength="54"
                         />
                       </div>
@@ -3483,7 +3420,7 @@
                           name="w3"
                           class="ph-answer-input"
                           autocomplete="off"
-                          placeholder="เพิ่มคำที่ 3 หรือเลือกอิโมจิด้านล่าง..."
+                          placeholder=""
                           maxlength="54"
                         />
                       </div>
@@ -3687,6 +3624,209 @@
     }
   }
 
+  /* ---------- 12B. Miro-Style Free-Boundary Pan / Zoom / Pinch / Auto-Fit Engine ---------- */
+  function clampMiroScale(s) {
+    return Math.max(0.18, Math.min(3.2, Number(s) || 1));
+  }
+
+  function applyMiroTransformToDom(animate) {
+    const vp = document.getElementById("miroBoardViewport");
+    const world = document.getElementById("miroBoardWorld");
+    if (!vp || !world) return;
+
+    const sc = clampMiroScale(state.miroCam.scale);
+    const tx = Number(state.miroCam.x) || 0;
+    const ty = Number(state.miroCam.y) || 0;
+    state.miroCam.scale = sc;
+
+    world.classList.toggle("is-smooth", Boolean(animate));
+    world.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${sc.toFixed(4)})`;
+
+    const gridStep = Math.max(12, Math.min(56, 24 * sc));
+    vp.style.backgroundSize = `${gridStep.toFixed(1)}px ${gridStep.toFixed(1)}px`;
+    vp.style.backgroundPosition = `${(tx % gridStep).toFixed(1)}px ${(ty % gridStep).toFixed(1)}px`;
+
+    const ro = document.getElementById("miroZoomReadout");
+    if (ro) ro.textContent = `${Math.round(sc * 100)}%`;
+
+    const fitBtn = document.getElementById("miroFitBtn");
+    if (fitBtn) fitBtn.classList.toggle("is-fit-active", Boolean(state.miroAutoFit));
+  }
+
+  function fitMiroToContent(animate) {
+    const vp = document.getElementById("miroBoardViewport");
+    const world = document.getElementById("miroBoardWorld");
+    if (!vp || !world) return;
+
+    const curSig = vp.getAttribute("data-miro-sig") || "empty";
+    if (curSig === "empty") {
+      state.miroCam = { x: 0, y: 0, scale: 1 };
+      state.miroLastSig = "empty";
+      state.miroNeedsResizeFit = false;
+      applyMiroTransformToDom(animate);
+      return;
+    }
+
+    const vw = Math.max(220, vp.clientWidth);
+    const vh = Math.max(180, vp.clientHeight);
+    const bw = Math.max(120, world.offsetWidth);
+    const bh = Math.max(100, world.offsetHeight);
+
+    const padX = 32;
+    const padY = 34;
+    const rawScale = Math.min((vw - padX * 2) / bw, (vh - padY * 2) / bh);
+    const fitScale = Math.max(0.2, Math.min(1.22, rawScale));
+
+    state.miroCam.scale = fitScale;
+    state.miroCam.x = Math.round((vw - bw * fitScale) / 2);
+    state.miroCam.y = Math.round((vh - bh * fitScale) / 2);
+    state.miroLastSig = curSig;
+    state.miroNeedsResizeFit = false;
+    applyMiroTransformToDom(animate);
+  }
+
+  function zoomMiroAroundPoint(factor, focalX, focalY, animate) {
+    const vp = document.getElementById("miroBoardViewport");
+    if (!vp) return;
+    const oldScale = clampMiroScale(state.miroCam.scale);
+    const nextScale = clampMiroScale(oldScale * factor);
+    const cx = Number.isFinite(focalX) ? focalX : vp.clientWidth / 2;
+    const cy = Number.isFinite(focalY) ? focalY : vp.clientHeight / 2;
+
+    const worldX = (cx - state.miroCam.x) / oldScale;
+    const worldY = (cy - state.miroCam.y) / oldScale;
+
+    state.miroAutoFit = false;
+    state.miroCam.scale = nextScale;
+    state.miroCam.x = cx - worldX * nextScale;
+    state.miroCam.y = cy - worldY * nextScale;
+    applyMiroTransformToDom(Boolean(animate));
+  }
+
+  function bindMiroViewportGestures(vp) {
+    if (!vp || vp._miroBound) return;
+    vp._miroBound = true;
+
+    const pointers = new Map();
+    let prevPinchDist = 0;
+    let prevPinchMid = null;
+    let panMoved = false;
+
+    vp.addEventListener(
+      "wheel",
+      (ev) => {
+        ev.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const mx = ev.clientX - rect.left;
+        const my = ev.clientY - rect.top;
+        const factor = Math.exp(-ev.deltaY * 0.0016);
+        zoomMiroAroundPoint(factor, mx, my, false);
+      },
+      { passive: false }
+    );
+
+    vp.addEventListener("pointerdown", (ev) => {
+      if (ev.target && ev.target.closest && ev.target.closest("button, .miro-hud-controls")) return;
+      if (ev.button !== undefined && ev.button !== 0 && ev.button !== 1) return;
+      pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      panMoved = false;
+      vp.classList.add("is-panning");
+      try {
+        vp.setPointerCapture(ev.pointerId);
+      } catch (_) {}
+
+      if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        prevPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        prevPinchMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      }
+    });
+
+    vp.addEventListener("pointermove", (ev) => {
+      if (!pointers.has(ev.pointerId)) return;
+      const prev = pointers.get(ev.pointerId);
+      const cur = { x: ev.clientX, y: ev.clientY };
+      pointers.set(ev.pointerId, cur);
+
+      if (pointers.size === 1) {
+        const dx = cur.x - prev.x;
+        const dy = cur.y - prev.y;
+        if (!panMoved && Math.hypot(dx, dy) > 2) {
+          panMoved = true;
+          state.miroAutoFit = false;
+        }
+        if (panMoved) {
+          state.miroCam.x += dx;
+          state.miroCam.y += dy;
+          applyMiroTransformToDom(false);
+        }
+      } else if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        const rect = vp.getBoundingClientRect();
+
+        if (prevPinchMid) {
+          state.miroCam.x += mid.x - prevPinchMid.x;
+          state.miroCam.y += mid.y - prevPinchMid.y;
+        }
+        if (prevPinchDist > 8 && dist > 8) {
+          zoomMiroAroundPoint(dist / prevPinchDist, mid.x - rect.left, mid.y - rect.top, false);
+        } else {
+          state.miroAutoFit = false;
+          applyMiroTransformToDom(false);
+        }
+        prevPinchDist = dist;
+        prevPinchMid = mid;
+      }
+    });
+
+    const endPointer = (ev) => {
+      pointers.delete(ev.pointerId);
+      if (pointers.size < 2) {
+        prevPinchDist = 0;
+        prevPinchMid = null;
+      }
+      if (pointers.size === 0) {
+        vp.classList.remove("is-panning");
+      }
+    };
+
+    vp.addEventListener("pointerup", endPointer);
+    vp.addEventListener("pointercancel", endPointer);
+
+    vp.addEventListener("dblclick", (ev) => {
+      if (ev.target && ev.target.closest && ev.target.closest("button, .miro-hud-controls")) return;
+      state.miroAutoFit = true;
+      fitMiroToContent(true);
+    });
+  }
+
+  function syncMiroBoardAfterRender() {
+    const vp = document.getElementById("miroBoardViewport");
+    const world = document.getElementById("miroBoardWorld");
+    if (!vp || !world) return;
+
+    bindMiroViewportGestures(vp);
+    const curSig = vp.getAttribute("data-miro-sig") || "empty";
+
+    if (curSig === "empty") {
+      state.miroCam = { x: 0, y: 0, scale: 1 };
+      state.miroLastSig = "empty";
+      applyMiroTransformToDom(false);
+      return;
+    }
+
+    if (state.miroAutoFit && (curSig !== state.miroLastSig || state.miroNeedsResizeFit)) {
+      applyMiroTransformToDom(false);
+      window.requestAnimationFrame(() => {
+        fitMiroToContent(state.miroLastSig !== "" && state.miroLastSig !== "empty");
+      });
+    } else {
+      applyMiroTransformToDom(false);
+    }
+  }
+
   function render() {
     const root = document.getElementById("appRoot");
     if (!root) return;
@@ -3706,6 +3846,7 @@
         : renderOverviewHtml();
 
     root.innerHTML = renderTopBarHtml() + stageHtml + renderModalsHtml();
+    syncMiroBoardAfterRender();
   }
 
   /* ---------- 13. Event Delegation & Wireless Clicker Navigation ---------- */
@@ -3788,8 +3929,13 @@
       publishPacket(`${state.sessionId}/theme_rename`, { type: "theme_rename", clusterKey: cKey, newTitle: cleanT }, false);
       scheduleSnapshotPublish();
       renderPreservingFocus();
-    } else if (act === "load-hf-demo") {
-      loadHopesFearsDemo(btn.getAttribute("data-demo") || "both");
+    } else if (act === "miro-zoom-in") {
+      zoomMiroAroundPoint(1.22, NaN, NaN, true);
+    } else if (act === "miro-zoom-out") {
+      zoomMiroAroundPoint(1 / 1.22, NaN, NaN, true);
+    } else if (act === "miro-fit-all") {
+      state.miroAutoFit = true;
+      fitMiroToContent(true);
     } else if (act === "set-detail-tab") {
       const nextTab = btn.getAttribute("data-tab") || "wordcloud";
       if (nextTab !== state.detailTab) pushNavHistory();
@@ -3857,22 +4003,39 @@
         const el = document.getElementById("phHfInput") || document.getElementById("phW1");
         if (el) el.focus();
       }, 40);
+    } else if (act === "phone-pick-peer") {
+      const tid = btn.getAttribute("data-target-id") || "";
+      if (!tid || !TARGET_MAP.has(tid)) return;
+      if (state.myMemberUid && state.myMemberUid === tid) return;
+      state.phonePickedTargetId = tid;
+      state.phoneJustSubmittedTargetId = "";
+      syncDefaultPolarityWithTarget(tid);
+      render();
+      setTimeout(() => {
+        const el = document.getElementById("phHfInput") || document.getElementById("phW1");
+        if (el) el.focus();
+      }, 40);
+    } else if (act === "phone-back-picker") {
+      state.phonePickedTargetId = "";
+      state.phoneJustSubmittedTargetId = "";
+      render();
     } else if (act === "phone-enable-manual") {
       state.phoneManualOverride = true;
+      state.phonePickedTargetId = "";
       render();
     } else if (act === "phone-disable-manual") {
       state.phoneManualOverride = false;
+      state.phonePickedTargetId = "";
       render();
     } else if (act === "phone-manual-target") {
       const tid = btn.getAttribute("data-target-id") || TOPIC_HF_BOARD_ID;
-      state.activeTargetId = tid;
-      syncDefaultPolarityWithTarget(tid);
-      state.view = "detail";
-      state.detailTab = "wordcloud";
+      state.phonePickedTargetId = tid;
       state.phoneJustSubmittedTargetId = "";
+      syncDefaultPolarityWithTarget(tid);
       render();
     } else if (act === "phone-manual-back-list") {
-      state.view = "overview";
+      state.phonePickedTargetId = "";
+      state.phoneJustSubmittedTargetId = "";
       render();
     } else if (act === "phone-emoji") {
       const em = btn.getAttribute("data-emoji") || "";
@@ -3899,8 +4062,6 @@
         inp.value = (inp.value ? inp.value + " " : "") + em;
         inp.focus();
       }
-    } else if (act === "load-smart-demo") {
-      loadLegacyDemoForSmart();
     } else if (act === "quick-rate") {
       submitRating(btn.getAttribute("data-target-id"), Number(btn.getAttribute("data-score")), "");
     } else if (act === "click-rating-bar") {
@@ -4164,8 +4325,9 @@
     () => {
       if (state.role === "participant") return;
       if (state.view !== "detail") return;
+      state.miroNeedsResizeFit = true;
       if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => renderPreservingFocus(), 180);
+      resizeTimer = setTimeout(() => renderPreservingFocus(), 160);
     },
     { passive: true }
   );
