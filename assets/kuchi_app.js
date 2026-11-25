@@ -83,6 +83,21 @@
     return `${DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-kuchinarai/"}#join`;
   }
 
+  function resolveMainPortalUrl() {
+    const href = String((typeof window !== "undefined" && window.location && window.location.href) || "");
+    const ref = String((typeof document !== "undefined" && document.referrer) || "");
+    if (/faculty-member/i.test(href) || /faculty-member/i.test(ref)) {
+      return DATA.meta.facultyPortalUrl || "https://smartwoo.github.io/racm303-2569-faculty-member/";
+    }
+    return DATA.meta.studentPortalUrl || "https://smartwoo.github.io/racm303-2569-student/";
+  }
+
+  const NAV_ICONS = {
+    back: `<svg class="tv-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>`,
+    home: `<svg class="tv-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    grid: `<svg class="tv-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>`
+  };
+
   function isPureEmoji(str) {
     const clean = String(str || "").trim();
     if (!clean || clean.length > 14) return false;
@@ -448,6 +463,9 @@
     roadmapModalOpen: false,
     resultsModalTargetId: "",
 
+    // Step-by-step navigation history stack for "Back 1 Screen"
+    navStack: [],
+
     // Live synced data
     wordsByTarget: new Map(),
     ratingsByTarget: new Map(),
@@ -492,9 +510,109 @@
     }
   }
 
-  /* ---------- 5. Apple TV Zoom-In & Zoom-Out Transitions ---------- */
-  function zoomIntoTarget(targetId, sourceEl, isRemoteSync) {
+  /* ---------- 5. Navigation History Stack + Apple TV Zoom-In & Zoom-Out ---------- */
+  function captureNavSnap() {
+    return {
+      view: state.view,
+      activeTargetId: state.activeTargetId,
+      detailTab: state.detailTab,
+      qrModalOpen: state.qrModalOpen,
+      identityModalOpen: state.identityModalOpen,
+      roadmapModalOpen: state.roadmapModalOpen,
+      resultsModalTargetId: state.resultsModalTargetId
+    };
+  }
+
+  function isSameSnap(a, b) {
+    if (!a || !b) return false;
+    return (
+      a.view === b.view &&
+      a.activeTargetId === b.activeTargetId &&
+      a.detailTab === b.detailTab &&
+      a.qrModalOpen === b.qrModalOpen &&
+      a.identityModalOpen === b.identityModalOpen &&
+      a.roadmapModalOpen === b.roadmapModalOpen &&
+      a.resultsModalTargetId === b.resultsModalTargetId
+    );
+  }
+
+  function pushNavHistory(snapOpt) {
+    const snap = snapOpt || captureNavSnap();
+    const top = state.navStack.length ? state.navStack[state.navStack.length - 1] : null;
+    if (top && isSameSnap(top, snap)) return;
+    state.navStack.push(snap);
+    if (state.navStack.length > 60) state.navStack.shift();
+  }
+
+  function hasAnyOpenModal() {
+    return Boolean(state.qrModalOpen || state.identityModalOpen || state.roadmapModalOpen || state.resultsModalTargetId);
+  }
+
+  function clearAllModals() {
+    state.qrModalOpen = false;
+    state.identityModalOpen = false;
+    state.roadmapModalOpen = false;
+    state.resultsModalTargetId = "";
+  }
+
+  function stepBackOneScreen() {
+    if (state.isAnimatingZoomOut || state.rouletteSpinning) return;
+
+    while (state.navStack.length > 0) {
+      const prev = state.navStack.pop();
+      if (isSameSnap(prev, captureNavSnap())) continue;
+
+      const wasDetail = state.view === "detail" && !hasAnyOpenModal();
+      state.qrModalOpen = Boolean(prev.qrModalOpen);
+      state.identityModalOpen = Boolean(prev.identityModalOpen);
+      state.roadmapModalOpen = Boolean(prev.roadmapModalOpen);
+      state.resultsModalTargetId = prev.resultsModalTargetId || "";
+
+      if (wasDetail && prev.view === "overview" && !hasAnyOpenModal()) {
+        zoomOutToOverview(false, true);
+        return;
+      }
+
+      if (state.view === "overview" && prev.view === "detail" && !hasAnyOpenModal()) {
+        state.detailTab = prev.detailTab || "wordcloud";
+        zoomIntoTarget(prev.activeTargetId || "m_smart", null, false, true);
+        return;
+      }
+
+      state.view = prev.view || "overview";
+      state.activeTargetId = prev.activeTargetId || "m_smart";
+      state.detailTab = prev.detailTab || "wordcloud";
+      playChime([523.25, 440], 0.08, "sine", 0.04);
+      broadcastPointer();
+      render();
+      return;
+    }
+
+    // No internal history left: if currently inside a modal or detail view, step back to Overview first
+    if (hasAnyOpenModal()) {
+      clearAllModals();
+      render();
+      return;
+    }
+    if (state.view === "detail") {
+      zoomOutToOverview(false, true);
+      return;
+    }
+
+    // Already at root Overview: go back 1 browser page, or fall back to Main RACM 303 Portal
+    if (window.history.length > 1 && document.referrer) {
+      window.history.back();
+    } else {
+      window.location.href = resolveMainPortalUrl();
+    }
+  }
+
+  function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory) {
     if (!TARGET_MAP.has(targetId)) return;
+    if (!isRemoteSync && !skipHistory) {
+      pushNavHistory();
+    }
+    clearAllModals();
     state.overviewReturningFromId = "";
     state.isAnimatingZoomOut = false;
 
@@ -507,7 +625,7 @@
       setTimeout(() => {
         state.view = "detail";
         state.activeTargetId = targetId;
-        state.detailTab = "wordcloud";
+        if (!skipHistory) state.detailTab = "wordcloud";
         const tObj = TARGET_MAP.get(targetId);
         if (tObj && tObj.member) {
           state.pickedUids.add(tObj.member.uid);
@@ -518,7 +636,7 @@
       }, 150);
     } else {
       state.activeTargetId = targetId;
-      state.detailTab = "wordcloud";
+      if (!skipHistory) state.detailTab = "wordcloud";
       const tObj = TARGET_MAP.get(targetId);
       if (tObj && tObj.member) {
         state.pickedUids.add(tObj.member.uid);
@@ -530,8 +648,19 @@
     }
   }
 
-  function zoomOutToOverview(isRemoteSync) {
+  function zoomOutToOverview(isRemoteSync, skipHistory) {
+    if (hasAnyOpenModal()) {
+      if (!isRemoteSync && !skipHistory) pushNavHistory();
+      clearAllModals();
+      if (state.view === "overview") {
+        render();
+        return;
+      }
+    }
     if (state.view === "overview" || state.isAnimatingZoomOut) return;
+    if (!isRemoteSync && !skipHistory) {
+      pushNavHistory();
+    }
     const prevId = state.activeTargetId;
     captureTileOrigin(prevId, null);
     state.isAnimatingZoomOut = true;
@@ -562,6 +691,8 @@
 
   function spinAppleTvRoulette() {
     if (state.rouletteSpinning) return;
+    const preSpinSnap = captureNavSnap();
+    clearAllModals();
     if (state.view !== "overview") {
       state.view = "overview";
       render();
@@ -594,7 +725,8 @@
         const winEl = document.querySelector(`[data-tile-id="${winner.uid}"]`);
         setTimeout(() => {
           state.rouletteFlashUid = "";
-          zoomIntoTarget(winner.uid, winEl, false);
+          pushNavHistory(preSpinSnap);
+          zoomIntoTarget(winner.uid, winEl, false, true);
         }, 380);
       }
     };
@@ -1151,6 +1283,27 @@
   }
 
   /* ---------- 10. Render Top Capsule + Overview + Zoomed Stage + Modals ---------- */
+  function renderUniversalNavClusterHtml(showOverviewBtn) {
+    const mainHomeUrl = resolveMainPortalUrl();
+    return `
+      <div class="tv-nav-pair" role="navigation" aria-label="ปุ่มย้อนกลับและหน้าหลัก">
+        <button type="button" class="tv-pill-btn is-nav-back" data-act="nav-back" title="ย้อนกลับ 1 หน้าก่อนหน้านี้">
+          ${NAV_ICONS.back}
+          <span>ย้อนกลับ</span>
+        </button>
+        ${
+          showOverviewBtn
+            ? `<button type="button" class="tv-pill-btn is-nav-grid" data-act="go-overview" title="ซูมกลับหน้าภาพรวมกลุ่มกุฉินารายณ์ 22 คน">${NAV_ICONS.grid}<span>ภาพรวมกลุ่ม</span></button>`
+            : ""
+        }
+        <a class="tv-pill-btn is-nav-home" href="${esc(mainHomeUrl)}" title="กลับหน้าหลักใหญ่พอร์ทัลรายวิชา RACM 303">
+          ${NAV_ICONS.home}
+          <span>หน้าหลักใหญ่</span>
+        </a>
+      </div>
+    `;
+  }
+
   function renderTopBarHtml() {
     const myMem = MEMBER_MAP.get(state.myMemberUid);
     const myLabel = myMem ? myMem.nickname : state.myGuestName || "เลือกชื่อ";
@@ -1158,21 +1311,18 @@
     return `
       <div class="tv-topbar-wrap">
         <header class="tv-topbar">
-          <button type="button" class="tv-brand-btn" data-act="go-overview" title="กลับสู่หน้าภาพรวมทั้งหมด (Apple TV Overview)">
-            <span class="tv-logo-badge">KG</span>
-            <span class="tv-brand-titles">
-              <span class="tv-brand-main">Kuchi Gang 2569 · รพร.กุฉินารายณ์</span>
-              <span class="tv-brand-sub">กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน</span>
-            </span>
-          </button>
+          <div class="tv-left-dock">
+            ${renderUniversalNavClusterHtml(state.view === "detail")}
+            <button type="button" class="tv-brand-btn" data-act="go-overview" title="หน้าภาพรวมครอบครัวกุฉินารายณ์ 22 คน">
+              <span class="tv-logo-badge">KG</span>
+              <span class="tv-brand-titles">
+                <span class="tv-brand-main">Kuchi Gang 2569 · รพร.กุฉินารายณ์</span>
+                <span class="tv-brand-sub">กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน</span>
+              </span>
+            </button>
+          </div>
 
           <div class="tv-actions">
-            ${
-              state.view === "detail"
-                ? `<button type="button" class="tv-pill-btn is-back-zoom" data-act="go-overview" title="ซูมกลับหน้าภาพรวม (Esc)">⤡ ภาพรวม 22 คน</button>`
-                : ""
-            }
-
             <select class="tv-pill-select" data-act="change-session" aria-label="เลือกรอบกิจกรรม">
               ${(DATA.sessions || [])
                 .map((s) => `<option value="${esc(s.id)}" ${s.id === state.sessionId ? "selected" : ""}>${esc(s.shortLabel)}</option>`)
@@ -1367,7 +1517,7 @@
 
           <div class="zm-toolbar">
             <div class="zm-nav-group">
-              <button type="button" class="tv-pill-btn is-back-zoom" data-act="go-overview">⤡ ซูมกลับภาพรวม (Esc)</button>
+              ${renderUniversalNavClusterHtml(true)}
               <button type="button" class="tv-pill-btn ${state.detailTab === "wordcloud" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="wordcloud">
                 ☁️ Word Cloud (${agg.totalSubmissions})
               </button>
@@ -1543,6 +1693,19 @@
     `;
   }
 
+  function renderModalNavHeaderHtml(titleHtml, extraRightHtml) {
+    return `
+      <div class="tv-modal-nav-header">
+        ${renderUniversalNavClusterHtml(true)}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${extraRightHtml || ""}
+          <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
+        </div>
+      </div>
+      ${titleHtml ? `<div style="margin-bottom:10px">${titleHtml}</div>` : ""}
+    `;
+  }
+
   function renderModalsHtml() {
     let html = "";
 
@@ -1552,9 +1715,8 @@
       const online = Array.from(state.presence.values());
       html += `
         <div class="tv-modal-backdrop" data-act="close-modals">
-          <div class="tv-modal-card" style="max-width:520px;text-align:center" onclick="event.stopPropagation()">
-            <h2 style="margin:0 0 6px;font-size:26px;font-weight:800">Instructions · สแกนเข้าห้องสด</h2>
-            <p style="margin:0 0 16px;font-size:14.5px;color:#64748b">สแกนด้วยกล้องมือถือ / iPad เพื่อซิงค์ตามจอหลักและส่งคำเข้า Word Cloud สด</p>
+          <div class="tv-modal-card" style="max-width:560px;text-align:center" onclick="event.stopPropagation()">
+            ${renderModalNavHeaderHtml(`<h2 style="margin:0 0 4px;font-size:25px;font-weight:800">Instructions · สแกนเข้าห้องสด</h2><p style="margin:0;font-size:14px;color:#64748b">สแกนด้วยกล้องมือถือ / iPad เพื่อซิงค์ตามจอหลักและส่งคำเข้า Word Cloud สด</p>`)}
             <div class="tv-qr-box">
               ${buildQrSvg(joinUrl)}
             </div>
@@ -1578,11 +1740,7 @@
       html += `
         <div class="tv-modal-backdrop" data-act="close-modals">
           <div class="tv-modal-card" onclick="event.stopPropagation()">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <h3 style="margin:0;font-size:20px;font-weight:800">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h3>
-              <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
-            </div>
-            <p style="margin:0 0 14px;font-size:14px;color:#64748b">แตะรูปตัวเองครั้งเดียว ระบบจำชื่ออัตโนมัติและซิงค์เข้าห้องสดทันที</p>
+            ${renderModalNavHeaderHtml(`<h3 style="margin:0 0 4px;font-size:20px;font-weight:800">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h3><p style="margin:0;font-size:14px;color:#64748b">แตะรูปตัวเองครั้งเดียว ระบบจำชื่ออัตโนมัติและซิงค์เข้าห้องสดทันที</p>`)}
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:9px">
               ${MEMBERS.map(
                 (m) => `
@@ -1612,13 +1770,10 @@
       html += `
         <div class="tv-modal-backdrop" data-act="close-modals">
           <div class="tv-modal-card" onclick="event.stopPropagation()">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-              <h3 style="margin:0;font-size:20px;font-weight:800">📊 ความถี่คำสะท้อน — ${esc(tObj ? tObj.shortTitle : "")} (${agg.totalSubmissions} คำ)</h3>
-              <div style="display:flex;gap:8px">
-                <button type="button" class="tv-pill-btn" style="color:#dc2626;border-color:#fecaca" data-act="clear-target" data-target-id="${esc(tid)}">🗑️ ล้างสไลด์นี้</button>
-                <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
-              </div>
-            </div>
+            ${renderModalNavHeaderHtml(
+              `<h3 style="margin:0;font-size:20px;font-weight:800">📊 ความถี่คำสะท้อน — ${esc(tObj ? tObj.shortTitle : "")} (${agg.totalSubmissions} คำ)</h3>`,
+              `<button type="button" class="tv-pill-btn" style="color:#dc2626;border-color:#fecaca" data-act="clear-target" data-target-id="${esc(tid)}">🗑️ ล้างสไลด์นี้</button>`
+            )}
             <table style="width:100%;border-collapse:collapse;font-size:14.5px">
               <thead>
                 <tr style="border-bottom:2px solid #e2e8f0;text-align:left">
@@ -1655,13 +1810,10 @@
       html += `
         <div class="tv-modal-backdrop" data-act="close-modals">
           <div class="tv-modal-card" onclick="event.stopPropagation()">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-              <h3 style="margin:0;font-size:20px;font-weight:800">🚂 เส้นทางกลุ่มที่ 1: รพร.กุฉินารายณ์ จ.กาฬสินธุ์</h3>
-              <div style="display:flex;gap:8px">
-                <a class="tv-pill-btn is-primary" href="${esc(DATA.meta.icsPath)}" download="RACM303_2569_Group1_Kuchinarai.ics">📅 ปฏิทิน .ics</a>
-                <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
-              </div>
-            </div>
+            ${renderModalNavHeaderHtml(
+              `<h3 style="margin:0;font-size:20px;font-weight:800">🚂 เส้นทางกลุ่มที่ 1: รพร.กุฉินารายณ์ จ.กาฬสินธุ์</h3>`,
+              `<a class="tv-pill-btn is-primary" href="${esc(DATA.meta.icsPath)}" download="RACM303_2569_Group1_Kuchinarai.ics">📅 ปฏิทิน .ics</a>`
+            )}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px">
               ${(DATA.roadmap || [])
                 .map(
@@ -1728,7 +1880,9 @@
     if (!btn) return;
     const act = btn.getAttribute("data-act");
 
-    if (act === "zoom-in-target") {
+    if (act === "nav-back") {
+      stepBackOneScreen();
+    } else if (act === "zoom-in-target") {
       const tid = btn.getAttribute("data-target-id");
       const gIdx = Number(btn.getAttribute("data-grid-idx"));
       if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
@@ -1742,7 +1896,9 @@
     } else if (act === "next-person") {
       stepZoomedTarget(1);
     } else if (act === "set-detail-tab") {
-      state.detailTab = btn.getAttribute("data-tab") || "wordcloud";
+      const nextTab = btn.getAttribute("data-tab") || "wordcloud";
+      if (nextTab !== state.detailTab) pushNavHistory();
+      state.detailTab = nextTab;
       broadcastPointer();
       render();
     } else if (act === "toggle-hide-words") {
@@ -1752,22 +1908,28 @@
       state.followHost = !state.followHost;
       render();
     } else if (act === "open-qr") {
+      if (!state.qrModalOpen) pushNavHistory();
+      clearAllModals();
       state.qrModalOpen = true;
       render();
     } else if (act === "open-identity") {
+      if (!state.identityModalOpen) pushNavHistory();
+      clearAllModals();
       state.identityModalOpen = true;
       render();
     } else if (act === "open-roadmap") {
+      if (!state.roadmapModalOpen) pushNavHistory();
+      clearAllModals();
       state.roadmapModalOpen = true;
       render();
     } else if (act === "open-results") {
-      state.resultsModalTargetId = btn.getAttribute("data-target-id") || "";
+      const nextResId = btn.getAttribute("data-target-id") || "";
+      if (state.resultsModalTargetId !== nextResId) pushNavHistory();
+      clearAllModals();
+      state.resultsModalTargetId = nextResId;
       render();
     } else if (act === "close-modals") {
-      state.qrModalOpen = false;
-      state.identityModalOpen = false;
-      state.roadmapModalOpen = false;
-      state.resultsModalTargetId = "";
+      clearAllModals();
       render();
     } else if (act === "select-identity") {
       const uid = btn.getAttribute("data-uid") || "";
@@ -1955,7 +2117,7 @@
         stepZoomedTarget(-1);
       } else if (ev.key === "Backspace") {
         ev.preventDefault();
-        zoomOutToOverview(false);
+        stepBackOneScreen();
       }
     }
   });

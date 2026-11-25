@@ -96,6 +96,71 @@ button, input, select, textarea {
   box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.12);
 }
 
+.tv-left-dock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.tv-nav-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tv-nav-ico {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.tv-pill-btn.is-nav-back {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  padding: 0 12px;
+}
+
+.tv-pill-btn.is-nav-back:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.tv-pill-btn.is-nav-home {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  border-color: transparent;
+  color: #ffffff;
+  padding: 0 13px;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.2);
+}
+
+.tv-pill-btn.is-nav-home:hover {
+  filter: brightness(1.1);
+}
+
+.tv-pill-btn.is-nav-grid {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  padding: 0 13px;
+}
+
+.tv-modal-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
 .tv-brand-btn {
   display: inline-flex;
   align-items: center;
