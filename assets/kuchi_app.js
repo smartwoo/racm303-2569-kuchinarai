@@ -963,6 +963,8 @@
     navStack: [],
 
     // Live synced data
+    resetEpoch: 0,
+    targetResetTs: new Map(),
     wordsByTarget: new Map(),
     ratingsByTarget: new Map(),
     teamMessagesByTarget: new Map(),
@@ -1440,9 +1442,12 @@
         teamMessagesObj[tid] = rec;
       });
       const customThemesObj = Object.fromEntries(state.customThemeTitles.entries());
+      const targetResetObj = Object.fromEntries(state.targetResetTs.entries());
       sSet(
         storageKeyForSession(state.sessionId),
         JSON.stringify({
+          resetEpoch: state.resetEpoch || 0,
+          targetResetTs: targetResetObj,
           words: wordsObj,
           ratings: ratingsObj,
           teamMessages: teamMessagesObj,
@@ -1452,7 +1457,38 @@
     } catch (_) {}
   }
 
+  function isEntryOlderThanReset(tid, tsVal) {
+    const t = Number(tsVal || 0);
+    if (state.resetEpoch > 0 && t <= state.resetEpoch) return true;
+    const tReset = Number(state.targetResetTs.get(tid) || 0);
+    if (tReset > 0 && t <= tReset) return true;
+    return false;
+  }
+
+  function purgeLocalDataUpToReset() {
+    state.wordsByTarget.forEach((mp, tid) => {
+      Array.from(mp.keys()).forEach((k) => {
+        const it = mp.get(k);
+        if (!it || isEntryOlderThanReset(tid, it.ts)) mp.delete(k);
+      });
+      if (mp.size === 0) state.wordsByTarget.delete(tid);
+    });
+    state.ratingsByTarget.forEach((mp, tid) => {
+      Array.from(mp.keys()).forEach((k) => {
+        const it = mp.get(k);
+        if (!it || isEntryOlderThanReset(tid, it.ts)) mp.delete(k);
+      });
+      if (mp.size === 0) state.ratingsByTarget.delete(tid);
+    });
+    Array.from(state.teamMessagesByTarget.keys()).forEach((tid) => {
+      const rec = state.teamMessagesByTarget.get(tid);
+      if (!rec || isEntryOlderThanReset(tid, rec.ts)) state.teamMessagesByTarget.delete(tid);
+    });
+  }
+
   function loadSessionStore(sessId) {
+    state.resetEpoch = 0;
+    state.targetResetTs.clear();
     state.wordsByTarget.clear();
     state.ratingsByTarget.clear();
     state.teamMessagesByTarget.clear();
@@ -1462,13 +1498,22 @@
       const raw = sGet(storageKeyForSession(sessId), "");
       if (!raw) return;
       const parsed = JSON.parse(raw);
+      if (parsed && Number(parsed.resetEpoch) > 0) {
+        state.resetEpoch = Number(parsed.resetEpoch);
+      }
+      if (parsed && parsed.targetResetTs && typeof parsed.targetResetTs === "object") {
+        Object.keys(parsed.targetResetTs).forEach((k) => {
+          const v = Number(parsed.targetResetTs[k] || 0);
+          if (v > 0) state.targetResetTs.set(k, v);
+        });
+      }
       if (parsed && parsed.words) {
         Object.keys(parsed.words).forEach((tid) => {
           if (!isValidWordBucket(tid)) return;
           const mp = new Map();
           (parsed.words[tid] || []).forEach((item) => {
             if (!item || !item.subId || !item.text) return;
-            if (isAutoDemoSubId(item.subId)) {
+            if (isAutoDemoSubId(item.subId) || isEntryOlderThanReset(tid, item.ts)) {
               purgedDemo = true;
               return;
             }
@@ -1482,16 +1527,18 @@
           if (!TARGET_MAP.has(tid)) return;
           const mp = new Map();
           (parsed.ratings[tid] || []).forEach((item) => {
-            if (item && item.pid && Number.isFinite(Number(item.score))) mp.set(item.pid, item);
+            if (item && item.pid && Number.isFinite(Number(item.score)) && !isEntryOlderThanReset(tid, item.ts)) {
+              mp.set(item.pid, item);
+            }
           });
-          state.ratingsByTarget.set(tid, mp);
+          if (mp.size > 0) state.ratingsByTarget.set(tid, mp);
         });
       }
       if (parsed && parsed.teamMessages) {
         Object.keys(parsed.teamMessages).forEach((tid) => {
           if (!TARGET_MAP.has(tid)) return;
           const rec = parsed.teamMessages[tid];
-          if (rec && rec.text) state.teamMessagesByTarget.set(tid, rec);
+          if (rec && rec.text && !isEntryOlderThanReset(tid, rec.ts)) state.teamMessagesByTarget.set(tid, rec);
         });
       }
       if (parsed && parsed.customThemes) {
@@ -1564,6 +1611,7 @@
       fromFacilitator: true,
       isHeartbeat: Boolean(isHeartbeat),
       sessionId: state.sessionId,
+      resetEpoch: state.resetEpoch || 0,
       view: state.view,
       targetId: state.activeTargetId,
       detailTab: state.detailTab,
@@ -1576,33 +1624,41 @@
   }
 
   let snapshotTimer = 0;
+  function publishSnapshotNow() {
+    if (snapshotTimer) {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = 0;
+    }
+    const wordsCompact = {};
+    state.wordsByTarget.forEach((mp, tid) => {
+      wordsCompact[tid] = Array.from(mp.values()).slice(-180);
+    });
+    const ratingsCompact = {};
+    state.ratingsByTarget.forEach((mp, tid) => {
+      ratingsCompact[tid] = Array.from(mp.values());
+    });
+    const teamMsgsCompact = {};
+    state.teamMessagesByTarget.forEach((rec, tid) => {
+      if (rec && rec.text) teamMsgsCompact[tid] = rec;
+    });
+    publishPacket(
+      `${state.sessionId}/snapshot`,
+      {
+        type: "snapshot",
+        resetEpoch: state.resetEpoch || 0,
+        targetResetTs: Object.fromEntries(state.targetResetTs.entries()),
+        words: wordsCompact,
+        ratings: ratingsCompact,
+        teamMessages: teamMsgsCompact,
+        customThemes: Object.fromEntries(state.customThemeTitles.entries())
+      },
+      true
+    );
+  }
+
   function scheduleSnapshotPublish() {
     if (snapshotTimer) clearTimeout(snapshotTimer);
-    snapshotTimer = setTimeout(() => {
-      const wordsCompact = {};
-      state.wordsByTarget.forEach((mp, tid) => {
-        wordsCompact[tid] = Array.from(mp.values()).slice(-180);
-      });
-      const ratingsCompact = {};
-      state.ratingsByTarget.forEach((mp, tid) => {
-        ratingsCompact[tid] = Array.from(mp.values());
-      });
-      const teamMsgsCompact = {};
-      state.teamMessagesByTarget.forEach((rec, tid) => {
-        if (rec && rec.text) teamMsgsCompact[tid] = rec;
-      });
-      publishPacket(
-        `${state.sessionId}/snapshot`,
-        {
-          type: "snapshot",
-          words: wordsCompact,
-          ratings: ratingsCompact,
-          teamMessages: teamMsgsCompact,
-          customThemes: Object.fromEntries(state.customThemeTitles.entries())
-        },
-        true
-      );
-    }, 340);
+    snapshotTimer = setTimeout(publishSnapshotNow, 340);
   }
 
   function publishMyPresence() {
@@ -1631,6 +1687,17 @@
       state.sessionId = msg.sessionId;
       sSet("kuchi2569_session", state.sessionId);
       loadSessionStore(state.sessionId);
+      changed = true;
+    }
+
+    if (Number(msg.resetEpoch || 0) > state.resetEpoch) {
+      state.resetEpoch = Number(msg.resetEpoch);
+      state.customThemeTitles.clear();
+      purgeLocalDataUpToReset();
+      state.phoneJustSubmittedTargetId = "";
+      state.phoneSelfRatedDone = false;
+      state.phoneTeamMsgDone = false;
+      saveSessionStore();
       changed = true;
     }
 
@@ -1714,17 +1781,35 @@
 
   function mergeSnapshot(msg) {
     let changed = false;
+    if (Number(msg.resetEpoch || 0) > state.resetEpoch) {
+      state.resetEpoch = Number(msg.resetEpoch);
+      state.customThemeTitles.clear();
+      purgeLocalDataUpToReset();
+      changed = true;
+    }
+    if (msg.targetResetTs && typeof msg.targetResetTs === "object") {
+      Object.keys(msg.targetResetTs).forEach((k) => {
+        const incomingTs = Number(msg.targetResetTs[k] || 0);
+        const curTs = Number(state.targetResetTs.get(k) || 0);
+        if (incomingTs > curTs) {
+          state.targetResetTs.set(k, incomingTs);
+          changed = true;
+        }
+      });
+      if (changed) purgeLocalDataUpToReset();
+    }
     if (msg.words && typeof msg.words === "object") {
       Object.keys(msg.words).forEach((tid) => {
         if (!isValidWordBucket(tid)) return;
         if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
         const mp = state.wordsByTarget.get(tid);
         (msg.words[tid] || []).forEach((w) => {
-          if (w && w.subId && w.text && !isAutoDemoSubId(w.subId) && !mp.has(w.subId)) {
+          if (w && w.subId && w.text && !isAutoDemoSubId(w.subId) && !isEntryOlderThanReset(tid, w.ts) && !mp.has(w.subId)) {
             mp.set(w.subId, w);
             changed = true;
           }
         });
+        if (mp.size === 0) state.wordsByTarget.delete(tid);
       });
     }
     if (msg.ratings && typeof msg.ratings === "object") {
@@ -1733,7 +1818,7 @@
         if (!state.ratingsByTarget.has(tid)) state.ratingsByTarget.set(tid, new Map());
         const mp = state.ratingsByTarget.get(tid);
         (msg.ratings[tid] || []).forEach((r) => {
-          if (r && r.pid && Number.isFinite(Number(r.score))) {
+          if (r && r.pid && Number.isFinite(Number(r.score)) && !isEntryOlderThanReset(tid, r.ts)) {
             const prev = mp.get(r.pid);
             if (!prev || (r.ts || 0) >= (prev.ts || 0)) {
               mp.set(r.pid, r);
@@ -1741,13 +1826,14 @@
             }
           }
         });
+        if (mp.size === 0) state.ratingsByTarget.delete(tid);
       });
     }
     if (msg.teamMessages && typeof msg.teamMessages === "object") {
       Object.keys(msg.teamMessages).forEach((tid) => {
         if (!TARGET_MAP.has(tid)) return;
         const incoming = msg.teamMessages[tid];
-        if (incoming && incoming.text) {
+        if (incoming && incoming.text && !isEntryOlderThanReset(tid, incoming.ts)) {
           const prev = state.teamMessagesByTarget.get(tid);
           if (!prev || (incoming.ts || 0) >= (prev.ts || 0)) {
             state.teamMessagesByTarget.set(tid, incoming);
@@ -1832,14 +1918,32 @@
       if (state.role === "facilitator") {
         broadcastMasterPointer(true);
         scheduleSnapshotPublish();
-      } else if (state.wordsByTarget.size > 0 || state.ratingsByTarget.size > 0) {
-        scheduleSnapshotPublish();
       }
       publishMyPresence();
       return;
     }
 
     if (msg.sessionId && msg.sessionId !== state.sessionId) return;
+
+    if (msg.type === "hard_reset_all") {
+      const ep = Number(msg.resetEpoch || Date.now());
+      if (ep >= state.resetEpoch) {
+        state.resetEpoch = ep;
+        state.wordsByTarget.clear();
+        state.ratingsByTarget.clear();
+        state.teamMessagesByTarget.clear();
+        state.customThemeTitles.clear();
+        state.miroCam = { x: 0, y: 0, scale: 1 };
+        state.miroAutoFit = true;
+        state.miroLastSig = "empty";
+        state.phoneJustSubmittedTargetId = "";
+        state.phoneSelfRatedDone = false;
+        state.phoneTeamMsgDone = false;
+        saveSessionStore();
+        renderPreservingFocus();
+      }
+      return;
+    }
 
     if (msg.type === "snapshot") {
       const changed = mergeSnapshot(msg);
@@ -1860,7 +1964,16 @@
     if (msg.type === "word_add") {
       const tid = String(msg.targetId || "");
       const item = msg.item;
-      if (!tid || !isValidWordBucket(tid) || !item || !item.subId || !item.text || isAutoDemoSubId(item.subId)) return;
+      if (
+        !tid ||
+        !isValidWordBucket(tid) ||
+        !item ||
+        !item.subId ||
+        !item.text ||
+        isAutoDemoSubId(item.subId) ||
+        isEntryOlderThanReset(tid, item.ts)
+      )
+        return;
       if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
       const mp = state.wordsByTarget.get(tid);
       if (!mp.has(item.subId)) {
@@ -1901,12 +2014,34 @@
 
     if (msg.type === "clear_target") {
       const tid = String(msg.targetId || "");
+      const rTs = Number(msg.resetTs || Date.now());
       if (tid === TOPIC_HF_BOARD_ID) {
+        state.targetResetTs.set(TOPIC_HOPES_ID, rTs);
+        state.targetResetTs.set(TOPIC_FEARS_ID, rTs);
         state.wordsByTarget.delete(TOPIC_HOPES_ID);
         state.wordsByTarget.delete(TOPIC_FEARS_ID);
+        state.customThemeTitles.clear();
+        state.miroCam = { x: 0, y: 0, scale: 1 };
+        state.miroAutoFit = true;
+        state.miroLastSig = "empty";
+      } else if (tid === "ALL_OVERVIEW_WORDS") {
+        MEMBERS.forEach((m) => {
+          state.targetResetTs.set(m.uid, rTs);
+          state.wordsByTarget.delete(m.uid);
+        });
+      } else if (tid === "ALL_RATINGS") {
+        MEMBERS.forEach((m) => {
+          state.ratingsByTarget.delete(m.uid);
+        });
+        state.phoneSelfRatedDone = false;
+      } else if (tid === "ALL_TEAM_MSGS") {
+        state.teamMessagesByTarget.clear();
+        state.phoneTeamMsgDone = false;
       } else if (tid) {
+        state.targetResetTs.set(tid, rTs);
         state.wordsByTarget.delete(tid);
         state.ratingsByTarget.delete(tid);
+        state.teamMessagesByTarget.delete(tid);
       }
       saveSessionStore();
       renderPreservingFocus();
@@ -1916,7 +2051,7 @@
     if (msg.type === "rating_set") {
       const tid = String(msg.targetId || "");
       const rec = msg.record;
-      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.pid) return;
+      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.pid || isEntryOlderThanReset(tid, rec.ts)) return;
       if (!state.ratingsByTarget.has(tid)) state.ratingsByTarget.set(tid, new Map());
       state.ratingsByTarget.get(tid).set(rec.pid, rec);
       saveSessionStore();
@@ -1927,7 +2062,7 @@
     if (msg.type === "team_msg_set") {
       const tid = String(msg.targetId || "");
       const rec = msg.record;
-      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.text) return;
+      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.text || isEntryOlderThanReset(tid, rec.ts)) return;
       const prev = state.teamMessagesByTarget.get(tid);
       if (!prev || (rec.ts || 0) >= (prev.ts || 0)) {
         state.teamMessagesByTarget.set(tid, rec);
@@ -2440,7 +2575,14 @@
                 <div class="aff-sticky-note ${isFearNote ? "is-fears" : "is-hopes"}">
                   <div class="postit-kicker-row">
                     <span class="postit-kicker-tag">${isFearNote ? "Fear" : "Hope"}</span>
-                    ${n.count > 1 ? `<span>×${n.count}</span>` : ""}
+                    <span style="display:inline-flex;align-items:center;gap:4px">
+                      ${n.count > 1 ? `<span>×${n.count}</span>` : ""}
+                      ${
+                        isTeacherResultOnly()
+                          ? `<button type="button" style="border:none;background:transparent;cursor:pointer;font-size:11px;font-weight:900;opacity:0.55;padding:0 2px;line-height:1" data-act="delete-word-norm" data-target-id="${isFearNote ? TOPIC_FEARS_ID : TOPIC_HOPES_ID}" data-norm="${esc(n.key)}" title="ลบแผ่น Post-it นี้">✕</button>`
+                          : ""
+                      }
+                    </span>
                   </div>
                   <div class="postit-text">${esc(n.text)}</div>
                 </div>
@@ -2745,7 +2887,17 @@
                     👤 <span>${esc(myLabel)}</span>
                   </button>
                 `
-                : ""
+                : `
+                  <button
+                    type="button"
+                    class="tv-pill-btn"
+                    style="border-color:#fecaca;background:#fff1f2;color:#be123c"
+                    data-act="fac-reset-all"
+                    title="ล้างข้อมูลและแคชทั้งหมดของรอบกิจกรรมนี้ (ทั้งบนจอนี้และมือถือทุกเครื่อง)"
+                  >
+                    🧹 <span>ล้างแคชทั้งหมด</span>
+                  </button>
+                `
             }
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="open-roadmap" title="แผนการเดินทางรถไฟ 10–19 ธ.ค. & 5 วัตถุประสงค์">
@@ -2863,8 +3015,10 @@
     return `
       <main class="tv-overview-stage${state.overviewReturningFromId ? " is-zooming-back" : ""}">
         <div class="tv-overview-banner">
-          <div class="tv-overview-headline">
-            <h1>ภาพรวมครอบครัวกุฉินารายณ์ 2569 (${MEMBERS.length} คน)</h1>
+          <div class="tv-overview-headline" style="max-width:1020px">
+            <h1 style="font-size:clamp(16.5px,1.5vw,24px);line-height:1.3">
+              หากต้องแนะนำ <span style="color:#2563eb">'สมาชิกในทีมแต่ละคน'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?
+            </h1>
             <span class="tv-overview-hint">
               แตะการ์ดสมาชิกเพื่อ <strong>Zoom In</strong> ดู Word Cloud รายคน · หรือกด <strong>ถัดไป ▶</strong> เพื่อไปหน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง (1–5) &amp; เหตุผล
             </span>
@@ -2877,6 +3031,11 @@
             >
               ⭐ ถัดไป: ให้คะแนนสะท้อนตัวตน (21 คน) ▶
             </button>
+            ${
+              isTeacherResultOnly()
+                ? `<button type="button" class="tv-pill-btn" style="border-color:#fecaca;color:#be123c" data-act="clear-target" data-target-id="ALL_OVERVIEW_WORDS" title="ล้างคำสะท้อนในหน้านี้ทั้งหมด">🗑️ ล้างหน้านี้</button>`
+                : ""
+            }
             <button
               type="button"
               class="tv-pill-btn"
@@ -2992,6 +3151,11 @@
             <button type="button" class="tv-pill-btn" data-act="go-overview">
               ⊞ กลับหน้า Word Cloud 21 คน
             </button>
+            ${
+              isTeacherResultOnly() && ratedCount > 0
+                ? `<button type="button" class="tv-pill-btn" style="border-color:#fecaca;color:#be123c" data-act="clear-target" data-target-id="ALL_RATINGS">🗑️ ล้างหน้านี้</button>`
+                : ""
+            }
             <span style="font-size:12.5px;font-weight:800;color:#196cff;background:#ffffff;padding:5px 12px;border-radius:999px;border:1.5px solid #93c5fd">
               ⭐ ให้คะแนนแล้ว ${ratedCount}/${MEMBERS.length} คน${ratedCount > 0 ? ` · เฉลี่ย ${groupAvg.toFixed(2)}/5.0` : ""}
             </span>
@@ -3096,6 +3260,11 @@
             <button type="button" class="tv-pill-btn" data-act="go-rating-overview">
               ⭐ กลับหน้าคะแนนสะท้อนตัวตน
             </button>
+            ${
+              isTeacherResultOnly() && sentCount > 0
+                ? `<button type="button" class="tv-pill-btn" style="border-color:#fecaca;color:#be123c" data-act="clear-target" data-target-id="ALL_TEAM_MSGS">🗑️ ล้างหน้านี้</button>`
+                : ""
+            }
             <span style="font-size:12.5px;font-weight:800;color:#4f46e5;background:#ffffff;padding:5px 12px;border-radius:999px;border:1.5px solid #c4b5fd">
               🤝 ส่งข้อความแล้ว ${sentCount}/${MEMBERS.length} คน
             </span>
@@ -3352,6 +3521,11 @@
                   `
               }
               <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}">📊 รายการคำ (${agg.totalSubmissions})</button>
+              ${
+                isTeacherResultOnly()
+                  ? `<button type="button" class="tv-pill-btn" style="border-color:#fecaca;background:#fff1f2;color:#be123c" data-act="clear-target" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}" title="ล้างข้อมูลและแคชของสไลด์นี้ทันที">🗑️ ล้างแคชหน้านี้</button>`
+                  : ""
+              }
             </div>
 
             <div class="zm-nav-group">
@@ -4796,18 +4970,67 @@
       saveSessionStore();
       scheduleSnapshotPublish();
       render();
+    } else if (act === "fac-reset-all") {
+      if (!window.confirm("ยืนยันล้างข้อมูลและแคชทั้งหมดของรอบกิจกรรมนี้ (รวมถึงในมือถือผู้เรียนและเซิร์ฟเวอร์ซิงค์สด) ใช่หรือไม่?")) {
+        return;
+      }
+      const nowEpoch = Date.now();
+      state.resetEpoch = nowEpoch;
+      state.targetResetTs.clear();
+      state.wordsByTarget.clear();
+      state.ratingsByTarget.clear();
+      state.teamMessagesByTarget.clear();
+      state.customThemeTitles.clear();
+      state.miroCam = { x: 0, y: 0, scale: 1 };
+      state.miroAutoFit = true;
+      state.miroLastSig = "empty";
+      state.resultsModalTargetId = "";
+      saveSessionStore();
+      try {
+        if (window.caches && typeof window.caches.keys === "function") {
+          window.caches.keys().then((keys) => keys.forEach((k) => window.caches.delete(k))).catch(() => {});
+        }
+      } catch (_) {}
+      publishPacket(`${state.sessionId}/hard_reset_all`, { type: "hard_reset_all", resetEpoch: nowEpoch }, false);
+      publishSnapshotNow();
+      broadcastMasterPointer(false);
+      playChime([659.25, 523.25, 392], 0.09, "sine", 0.05);
+      render();
     } else if (act === "clear-target") {
       const tid = btn.getAttribute("data-target-id");
+      const nowTs = Date.now();
       if (tid === TOPIC_HF_BOARD_ID) {
+        state.targetResetTs.set(TOPIC_HOPES_ID, nowTs);
+        state.targetResetTs.set(TOPIC_FEARS_ID, nowTs);
         state.wordsByTarget.delete(TOPIC_HOPES_ID);
         state.wordsByTarget.delete(TOPIC_FEARS_ID);
+        state.customThemeTitles.clear();
+        state.miroCam = { x: 0, y: 0, scale: 1 };
+        state.miroAutoFit = true;
+        state.miroLastSig = "empty";
+      } else if (tid === "ALL_OVERVIEW_WORDS") {
+        if (!window.confirm("ยืนยันล้างคำสะท้อนใน Word Cloud ทั้ง 21 คนในหน้านี้ใช่หรือไม่?")) return;
+        MEMBERS.forEach((m) => {
+          state.targetResetTs.set(m.uid, nowTs);
+          state.wordsByTarget.delete(m.uid);
+        });
+      } else if (tid === "ALL_RATINGS") {
+        if (!window.confirm("ยืนยันล้างคะแนนและเหตุผลทั้ง 21 คนในหน้านี้ใช่หรือไม่?")) return;
+        MEMBERS.forEach((m) => state.ratingsByTarget.delete(m.uid));
+      } else if (tid === "ALL_TEAM_MSGS") {
+        if (!window.confirm("ยืนยันล้างข้อความ 1 เรื่องอยากบอกทีมทั้ง 21 คนในหน้านี้ใช่หรือไม่?")) return;
+        state.teamMessagesByTarget.clear();
       } else if (tid) {
+        state.targetResetTs.set(tid, nowTs);
         state.wordsByTarget.delete(tid);
         state.ratingsByTarget.delete(tid);
+        state.teamMessagesByTarget.delete(tid);
       }
+      state.resultsModalTargetId = "";
       saveSessionStore();
-      publishPacket(`${state.sessionId}/clear_target`, { type: "clear_target", targetId: tid }, false);
-      scheduleSnapshotPublish();
+      publishPacket(`${state.sessionId}/clear_target`, { type: "clear_target", targetId: tid, resetTs: nowTs }, false);
+      publishSnapshotNow();
+      playChime([523.25, 392], 0.08, "sine", 0.045);
       render();
     } else if (act === "toggle-fullscreen") {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
