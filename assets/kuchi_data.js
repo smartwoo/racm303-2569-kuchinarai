@@ -4,7 +4,9 @@
    อาจารย์ที่ปรึกษา: อ. นพ.ณัฐวุฒิ เอี่ยงธนรัตน์ ("พี่สมาร์ท")
    พี่ประสานงาน: คุณวิลาสิณี ("พี่ฟลุ๊ค") · นศพ. ชั้นปีที่ 3 จำนวน 20 คน
    ========================================================================== */
-window.KUCHI_DATA = {
+(function () {
+  const PFX = window.KUCHI_ASSET_PREFIX || "";
+  window.KUCHI_DATA = {
   meta: {
     courseCode: "RACM 303",
     academicYear: "2569",
@@ -23,7 +25,7 @@ window.KUCHI_DATA = {
     fallbackStudentUrl: "https://smartwoo.github.io/racm303-2569-student/kuchinarai/",
     studentPortalUrl: "https://smartwoo.github.io/racm303-2569-student/",
     facultyPortalUrl: "https://smartwoo.github.io/racm303-2569-faculty-member/",
-    icsPath: "calendars/group_1_kuchinarai.ics"
+    icsPath: PFX + "calendars/group_1_kuchinarai.ics"
   },
 
   sessions: [
@@ -80,7 +82,7 @@ window.KUCHI_DATA = {
       program: "Advisor",
       disc: 0,
       gender: "M",
-      photo: "assets/photos/advisor_nuttawut.jpg",
+      photo: PFX + "assets/photos/advisor_nuttawut.jpg",
       accent: "#2563eb"
     },
     {
@@ -98,7 +100,7 @@ window.KUCHI_DATA = {
       program: "Coordinator",
       disc: 0,
       gender: "F",
-      photo: "assets/photos/staff_1.jpg",
+      photo: PFX + "assets/photos/staff_1.jpg",
       accent: "#e11d48"
     },
     {
@@ -116,7 +118,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 1,
       gender: "F",
-      photo: "assets/photos/6702006.jpg",
+      photo: PFX + "assets/photos/6702006.jpg",
       accent: "#7c3aed"
     },
     {
@@ -134,7 +136,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 1,
       gender: "M",
-      photo: "assets/photos/6702009.jpg",
+      photo: PFX + "assets/photos/6702009.jpg",
       accent: "#2563eb"
     },
     {
@@ -152,7 +154,7 @@ window.KUCHI_DATA = {
       program: "MD-M.Eng",
       disc: 2,
       gender: "F",
-      photo: "assets/photos/6702015.jpg",
+      photo: PFX + "assets/photos/6702015.jpg",
       accent: "#059669"
     },
     {
@@ -170,7 +172,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 2,
       gender: "M",
-      photo: "assets/photos/6702021.jpg",
+      photo: PFX + "assets/photos/6702021.jpg",
       accent: "#0284c7"
     },
     {
@@ -188,7 +190,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 3,
       gender: "F",
-      photo: "assets/photos/6702035.jpg",
+      photo: PFX + "assets/photos/6702035.jpg",
       accent: "#e11d48"
     },
     {
@@ -206,7 +208,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 3,
       gender: "M",
-      photo: "assets/photos/6702037.jpg",
+      photo: PFX + "assets/photos/6702037.jpg",
       accent: "#2563eb"
     },
     {
@@ -224,7 +226,7 @@ window.KUCHI_DATA = {
       program: "MD-M.Eng",
       disc: 4,
       gender: "F",
-      photo: "assets/photos/6702049.jpg",
+      photo: PFX + "assets/photos/6702049.jpg",
       accent: "#7c3aed"
     },
     {
@@ -242,7 +244,7 @@ window.KUCHI_DATA = {
       program: "MD-M.Eng",
       disc: 5,
       gender: "F",
-      photo: "assets/photos/6702056.jpg",
+      photo: PFX + "assets/photos/6702056.jpg",
       accent: "#e11d48"
     },
     {
@@ -260,7 +262,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 4,
       gender: "M",
-      photo: "assets/photos/6702060.jpg",
+      photo: PFX + "assets/photos/6702060.jpg",
       accent: "#059669"
     },
     {
@@ -278,7 +280,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 6,
       gender: "F",
-      photo: "assets/photos/6702061.jpg",
+      photo: PFX + "assets/photos/6702061.jpg",
       accent: "#7c3aed"
     },
     {
@@ -296,7 +298,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 5,
       gender: "M",
-      photo: "assets/photos/6702078.jpg",
+      photo: PFX + "assets/photos/6702078.jpg",
       accent: "#0284c7"
     },
     {
@@ -314,7 +316,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 6,
       gender: "M",
-      photo: "assets/photos/6702089.jpg",
+      photo: PFX + "assets/photos/6702089.jpg",
       accent: "#2563eb"
     },
     {
@@ -332,7 +334,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 1,
       gender: "M",
-      photo: "assets/photos/6702110.jpg",
+      photo: PFX + "assets/photos/6702110.jpg",
       accent: "#059669"
     },
     {
@@ -350,7 +352,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 2,
       gender: "M",
-      photo: "assets/photos/6702112.jpg",
+      photo: PFX + "assets/photos/6702112.jpg",
       accent: "#0284c7"
     },
     {
@@ -368,7 +370,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 1,
       gender: "F",
-      photo: "assets/photos/6702130.jpg",
+      photo: PFX + "assets/photos/6702130.jpg",
       accent: "#e11d48"
     },
     {
@@ -386,7 +388,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 5,
       gender: "F",
-      photo: "assets/photos/6702134.jpg",
+      photo: PFX + "assets/photos/6702134.jpg",
       accent: "#7c3aed"
     },
     {
@@ -404,7 +406,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 3,
       gender: "F",
-      photo: "assets/photos/6702153.jpg",
+      photo: PFX + "assets/photos/6702153.jpg",
       accent: "#e11d48"
     },
     {
@@ -422,7 +424,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 3,
       gender: "M",
-      photo: "assets/photos/6702154.jpg",
+      photo: PFX + "assets/photos/6702154.jpg",
       accent: "#059669"
     },
     {
@@ -440,7 +442,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 4,
       gender: "F",
-      photo: "assets/photos/6702157.jpg",
+      photo: PFX + "assets/photos/6702157.jpg",
       accent: "#7c3aed"
     },
     {
@@ -458,7 +460,7 @@ window.KUCHI_DATA = {
       program: "MD",
       disc: 4,
       gender: "M",
-      photo: "assets/photos/6702166.jpg",
+      photo: PFX + "assets/photos/6702166.jpg",
       accent: "#2563eb"
     }
   ],
@@ -541,3 +543,4 @@ window.KUCHI_DATA = {
     }
   ]
 };
+})();
