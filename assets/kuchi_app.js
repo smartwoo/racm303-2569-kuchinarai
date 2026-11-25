@@ -91,13 +91,9 @@
     return DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-kuchinarai/";
   }
 
-  /* Student-safe QR Join URL (Never points students to faculty-member domain!) */
+  /* Student-safe QR Join URL (Always points to verified 200 OK Student Portal join.html!) */
   function getJoinUrl() {
-    const base = getBaseDirUrl();
-    let studentSafeBase = base;
-    if (/racm303-2569-faculty-member/i.test(base)) {
-      studentSafeBase = base.replace(/racm303-2569-faculty-member/gi, "racm303-2569-student");
-    }
+    const studentSafeBase = DATA.meta.fallbackStudentUrl || "https://smartwoo.github.io/racm303-2569-student/kuchinarai/";
     const qs = state && state.sessionId && state.sessionId !== "sg1_intro" ? `?s=${encodeURIComponent(state.sessionId)}` : "";
     return `${studentSafeBase}join.html${qs}`;
   }
