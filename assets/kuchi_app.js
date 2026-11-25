@@ -14,6 +14,25 @@
 (function () {
   "use strict";
 
+  const APP_BUILD_VER = "20261126tv12";
+  try {
+    if (typeof window.fetch === "function") {
+      window
+        .fetch("assets/kuchi_version.json?t=" + Date.now(), { cache: "no-store" })
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && j.v && j.v !== APP_BUILD_VER) {
+            const u = new URL(window.location.href);
+            if (u.searchParams.get("v") !== j.v) {
+              u.searchParams.set("v", j.v);
+              window.location.replace(u.toString());
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  } catch (_) {}
+
   const DATA = window.KUCHI_DATA || { meta: {}, members: [], sessions: [], roadmap: [], objectives5: [] };
   const MEMBERS = (DATA.members || []).filter((m) => m && m.uid !== "m_fluke");
   const MEMBER_MAP = new Map(MEMBERS.map((m) => [m.uid, m]));
@@ -3017,7 +3036,7 @@
         <div class="tv-overview-banner">
           <div class="tv-overview-headline" style="max-width:1020px">
             <h1 style="font-size:clamp(16.5px,1.5vw,24px);line-height:1.3">
-              หากต้องแนะนำ <span style="color:#2563eb">'สมาชิกในทีมแต่ละคน'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?
+              หากต้องแนะนำ <span style="color:#2563eb">'สมาชิกแต่ละคนในทีม'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?
             </h1>
             <span class="tv-overview-hint">
               แตะการ์ดสมาชิกเพื่อ <strong>Zoom In</strong> ดู Word Cloud รายคน · หรือกด <strong>ถัดไป ▶</strong> เพื่อไปหน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง (1–5) &amp; เหตุผล
