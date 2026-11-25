@@ -949,6 +949,7 @@
     phoneManualOverride: false,
     phoneJustSubmittedTargetId: "",
     phoneSelfRatedDone: false,
+    phoneTeamMsgDone: false,
     phoneDraftRating: 5.0,
     activeEmojiInputId: "phW1",
 
@@ -964,6 +965,7 @@
     // Live synced data
     wordsByTarget: new Map(),
     ratingsByTarget: new Map(),
+    teamMessagesByTarget: new Map(),
     customThemeTitles: new Map(),
     presence: new Map(),
 
@@ -1115,12 +1117,20 @@
       state.roadmapModalOpen = Boolean(prev.roadmapModalOpen);
       state.resultsModalTargetId = prev.resultsModalTargetId || "";
 
-      if (wasDetail && (prev.view === "overview" || prev.view === "rating_overview") && !hasAnyOpenModal()) {
+      if (
+        wasDetail &&
+        (prev.view === "overview" || prev.view === "rating_overview" || prev.view === "team_message_overview") &&
+        !hasAnyOpenModal()
+      ) {
         zoomOutToOverview(false, true, prev.view);
         return;
       }
 
-      if ((state.view === "overview" || state.view === "rating_overview") && prev.view === "detail" && !hasAnyOpenModal()) {
+      if (
+        (state.view === "overview" || state.view === "rating_overview" || state.view === "team_message_overview") &&
+        prev.view === "detail" &&
+        !hasAnyOpenModal()
+      ) {
         state.detailTab = prev.detailTab || "wordcloud";
         zoomIntoTarget(prev.activeTargetId || TOPIC_HF_BOARD_ID, null, false, true, state.detailTab);
         return;
@@ -1148,6 +1158,10 @@
       } else {
         zoomOutToOverview(false, false, state.detailReturnView || "overview");
       }
+      return;
+    }
+    if (state.view === "team_message_overview") {
+      zoomOutToOverview(false, false, "rating_overview");
       return;
     }
     if (state.view === "rating_overview") {
@@ -1186,21 +1200,41 @@
     render();
   }
 
+  function goToTeamMessageOverview(isRemoteSync, skipHistory) {
+    if (!isRemoteSync && !skipHistory) pushNavHistory();
+    clearAllModals();
+    state.isAnimatingZoomOut = false;
+    state.view = "team_message_overview";
+    state.detailReturnView = "team_message_overview";
+    playChime([587.33, 783.99, 987.77], 0.1, "sine", 0.045);
+    if (!isRemoteSync) broadcastMasterPointer(false);
+    render();
+  }
+
   function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory, forcedTab) {
     if (targetId === TOPIC_HOPES_ID || targetId === TOPIC_FEARS_ID) targetId = TOPIC_HF_BOARD_ID;
     if (!TARGET_MAP.has(targetId)) return;
     if (!isRemoteSync && !skipHistory) {
       pushNavHistory();
     }
-    const fromOverviewKind = state.view === "rating_overview" ? "rating_overview" : "overview";
+    const isAnyOverview =
+      state.view === "overview" || state.view === "rating_overview" || state.view === "team_message_overview";
+    const fromOverviewKind =
+      state.view === "team_message_overview"
+        ? "team_message_overview"
+        : state.view === "rating_overview"
+        ? "rating_overview"
+        : "overview";
     clearAllModals();
     state.overviewReturningFromId = "";
     state.isAnimatingZoomOut = false;
     syncDefaultPolarityWithTarget(targetId);
 
-    const nextTab = forcedTab || (state.view === "rating_overview" ? "rating" : "wordcloud");
+    const nextTab =
+      forcedTab ||
+      (state.view === "team_message_overview" ? "team_msg" : state.view === "rating_overview" ? "rating" : "wordcloud");
 
-    if (state.view === "overview" || state.view === "rating_overview") {
+    if (isAnyOverview) {
       state.detailReturnView = fromOverviewKind;
       captureTileOrigin(targetId, sourceEl);
       const ov = document.querySelector(".tv-overview-stage");
@@ -1227,7 +1261,12 @@
   }
 
   function zoomOutToOverview(isRemoteSync, skipHistory, targetOverviewKind) {
-    const destView = targetOverviewKind === "rating_overview" ? "rating_overview" : "overview";
+    const destView =
+      targetOverviewKind === "team_message_overview"
+        ? "team_message_overview"
+        : targetOverviewKind === "rating_overview"
+        ? "rating_overview"
+        : "overview";
     if (hasAnyOpenModal()) {
       if (!isRemoteSync && !skipHistory) pushNavHistory();
       clearAllModals();
@@ -1236,7 +1275,12 @@
         return;
       }
     }
-    if (state.view === "lobby" || state.view === "overview" || state.view === "rating_overview") {
+    if (
+      state.view === "lobby" ||
+      state.view === "overview" ||
+      state.view === "rating_overview" ||
+      state.view === "team_message_overview"
+    ) {
       if (state.view === destView) return;
       if (!isRemoteSync && !skipHistory) pushNavHistory();
       state.view = destView;
@@ -1276,7 +1320,8 @@
        -> Slide 2: Hopes & Fears (Miro Blank-Space Affinity Diagram)
        -> Slide 3: ภาพรวมครอบครัวกุฉินารายณ์ 21 คน (Word Cloud Overview)
        -> Slide 4: หน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง 1–5 & เหตุผล (Rating Overview 21 คน)
-       -> Slide 5: ทริปรถไฟ & รพร.กุฉินารายณ์ */
+       -> Slide 5: หน้าเห็นแต่ละคนบอก 1 เรื่องกับทุกคนเพื่อทำงานร่วมกันอย่างราบรื่น (Team Message Overview 21 คน)
+       -> Slide 6: ทริปรถไฟ & รพร.กุฉินารายณ์ */
   function clickerNextSlide() {
     if (state.isAnimatingZoomOut) return;
     if (state.view === "lobby") {
@@ -1289,11 +1334,11 @@
         return;
       }
       if (state.activeTargetId === TOPIC_TRIP_ID) {
-        goToRatingOverview(false, false);
+        goToTeamMessageOverview(false, false);
         return;
       }
-      // Inside a zoomed member card: Word Cloud -> Self-Rating -> Back to 21-Person Rating Overview!
-      if (state.detailTab !== "rating") {
+      // Inside a zoomed member card: Word Cloud -> Self-Rating -> Team Message -> Back to Overview!
+      if (state.detailTab === "wordcloud") {
         pushNavHistory();
         state.detailTab = "rating";
         playChime([523.25, 659.25], 0.08, "sine", 0.04);
@@ -1301,7 +1346,15 @@
         render();
         return;
       }
-      zoomOutToOverview(false, false, "rating_overview");
+      if (state.detailTab === "rating") {
+        pushNavHistory();
+        state.detailTab = "team_msg";
+        playChime([587.33, 783.99], 0.08, "sine", 0.04);
+        broadcastMasterPointer(false);
+        render();
+        return;
+      }
+      zoomOutToOverview(false, false, "team_message_overview");
       return;
     }
     if (state.view === "overview") {
@@ -1309,6 +1362,10 @@
       return;
     }
     if (state.view === "rating_overview") {
+      goToTeamMessageOverview(false, false);
+      return;
+    }
+    if (state.view === "team_message_overview") {
       zoomIntoTarget(TOPIC_TRIP_ID, null, false, false, "wordcloud");
     }
   }
@@ -1324,7 +1381,14 @@
         return;
       }
       if (state.activeTargetId === TOPIC_TRIP_ID) {
-        goToRatingOverview(false, false);
+        goToTeamMessageOverview(false, false);
+        return;
+      }
+      if (state.detailTab === "team_msg" && state.detailReturnView !== "team_message_overview") {
+        pushNavHistory();
+        state.detailTab = "rating";
+        broadcastMasterPointer(false);
+        render();
         return;
       }
       if (state.detailTab === "rating" && state.detailReturnView === "overview") {
@@ -1335,6 +1399,11 @@
         return;
       }
       zoomOutToOverview(false, false, state.detailReturnView || "overview");
+      return;
+    }
+
+    if (state.view === "team_message_overview") {
+      zoomOutToOverview(false, false, "rating_overview");
       return;
     }
 
@@ -1365,12 +1434,18 @@
         if (tid === "m_fluke") return;
         ratingsObj[tid] = Array.from(m.values());
       });
+      const teamMessagesObj = {};
+      state.teamMessagesByTarget.forEach((rec, tid) => {
+        if (tid === "m_fluke" || !rec || !rec.text) return;
+        teamMessagesObj[tid] = rec;
+      });
       const customThemesObj = Object.fromEntries(state.customThemeTitles.entries());
       sSet(
         storageKeyForSession(state.sessionId),
         JSON.stringify({
           words: wordsObj,
           ratings: ratingsObj,
+          teamMessages: teamMessagesObj,
           customThemes: customThemesObj
         })
       );
@@ -1380,6 +1455,7 @@
   function loadSessionStore(sessId) {
     state.wordsByTarget.clear();
     state.ratingsByTarget.clear();
+    state.teamMessagesByTarget.clear();
     state.customThemeTitles.clear();
     let purgedDemo = false;
     try {
@@ -1409,6 +1485,13 @@
             if (item && item.pid && Number.isFinite(Number(item.score))) mp.set(item.pid, item);
           });
           state.ratingsByTarget.set(tid, mp);
+        });
+      }
+      if (parsed && parsed.teamMessages) {
+        Object.keys(parsed.teamMessages).forEach((tid) => {
+          if (!TARGET_MAP.has(tid)) return;
+          const rec = parsed.teamMessages[tid];
+          if (rec && rec.text) state.teamMessagesByTarget.set(tid, rec);
         });
       }
       if (parsed && parsed.customThemes) {
@@ -1504,12 +1587,17 @@
       state.ratingsByTarget.forEach((mp, tid) => {
         ratingsCompact[tid] = Array.from(mp.values());
       });
+      const teamMsgsCompact = {};
+      state.teamMessagesByTarget.forEach((rec, tid) => {
+        if (rec && rec.text) teamMsgsCompact[tid] = rec;
+      });
       publishPacket(
         `${state.sessionId}/snapshot`,
         {
           type: "snapshot",
           words: wordsCompact,
           ratings: ratingsCompact,
+          teamMessages: teamMsgsCompact,
           customThemes: Object.fromEntries(state.customThemeTitles.entries())
         },
         true
@@ -1551,13 +1639,15 @@
     const hostView =
       msg.view === "detail" && TARGET_MAP.has(normalizedIncomingTarget)
         ? "detail"
+        : msg.view === "team_message_overview"
+        ? "team_message_overview"
         : msg.view === "rating_overview"
         ? "rating_overview"
         : msg.view === "lobby"
         ? "lobby"
         : "overview";
     const hostTarget = TARGET_MAP.has(normalizedIncomingTarget) ? normalizedIncomingTarget : state.hostTargetId || TOPIC_HF_BOARD_ID;
-    const hostTab = msg.detailTab === "rating" ? "rating" : "wordcloud";
+    const hostTab = msg.detailTab === "team_msg" ? "team_msg" : msg.detailTab === "rating" ? "rating" : "wordcloud";
 
     if (state.hostView !== hostView || state.hostTargetId !== hostTarget || state.hostDetailTab !== hostTab) {
       state.hostView = hostView;
@@ -1571,6 +1661,7 @@
     // - Slide 2 (Hopes & Fears): Open Hopes & Fears Post-it Pad together
     // - Slide 3 (overview / member wordcloud): Open 21-Person Picker so students freely pick peers & type!
     // - Slide 4 (rating_overview / member rating): Open Owner Self-Rating for the student's OWN Word Cloud!
+    // - Slide 5 (team_message_overview / member team_msg): Open "1 เรื่องที่อยากบอกทุกคนในทีม" for the student's OWN profile!
     let nextPhoneView = "overview";
     let nextPhoneTarget = state.activeTargetId;
 
@@ -1580,6 +1671,12 @@
     } else if (hostView === "detail" && hostTarget === TOPIC_HF_BOARD_ID) {
       nextPhoneView = "detail";
       nextPhoneTarget = TOPIC_HF_BOARD_ID;
+      state.phonePickedTargetId = "";
+    } else if (
+      hostView === "team_message_overview" ||
+      (hostView === "detail" && hostTab === "team_msg" && hostTarget !== TOPIC_TRIP_ID)
+    ) {
+      nextPhoneView = "team_message_overview";
       state.phonePickedTargetId = "";
     } else if (hostView === "rating_overview" || (hostView === "detail" && hostTab === "rating" && hostTarget !== TOPIC_TRIP_ID)) {
       nextPhoneView = "rating_overview";
@@ -1646,6 +1743,19 @@
         });
       });
     }
+    if (msg.teamMessages && typeof msg.teamMessages === "object") {
+      Object.keys(msg.teamMessages).forEach((tid) => {
+        if (!TARGET_MAP.has(tid)) return;
+        const incoming = msg.teamMessages[tid];
+        if (incoming && incoming.text) {
+          const prev = state.teamMessagesByTarget.get(tid);
+          if (!prev || (incoming.ts || 0) >= (prev.ts || 0)) {
+            state.teamMessagesByTarget.set(tid, incoming);
+            changed = true;
+          }
+        }
+      });
+    }
     if (msg.customThemes && typeof msg.customThemes === "object") {
       Object.keys(msg.customThemes).forEach((k) => {
         if (msg.customThemes[k] && state.customThemeTitles.get(k) !== msg.customThemes[k]) {
@@ -1681,9 +1791,15 @@
           } else {
             renderPreservingFocus();
           }
+        } else if (msg.view === "team_message_overview") {
+          goToTeamMessageOverview(true, true);
         } else if (msg.view === "rating_overview") {
           goToRatingOverview(true, true);
-        } else if (state.view === "detail" || state.view === "rating_overview") {
+        } else if (
+          state.view === "detail" ||
+          state.view === "rating_overview" ||
+          state.view === "team_message_overview"
+        ) {
           zoomOutToOverview(true, true, "overview");
         }
       }
@@ -1805,6 +1921,19 @@
       state.ratingsByTarget.get(tid).set(rec.pid, rec);
       saveSessionStore();
       if (state.role !== "participant") renderPreservingFocus();
+      return;
+    }
+
+    if (msg.type === "team_msg_set") {
+      const tid = String(msg.targetId || "");
+      const rec = msg.record;
+      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.text) return;
+      const prev = state.teamMessagesByTarget.get(tid);
+      if (!prev || (rec.ts || 0) >= (prev.ts || 0)) {
+        state.teamMessagesByTarget.set(tid, rec);
+        saveSessionStore();
+        if (state.role !== "participant") renderPreservingFocus();
+      }
     }
   }
 
@@ -2151,6 +2280,27 @@
     renderPreservingFocus();
   }
 
+  function submitTeamMessage(targetId, rawText) {
+    const cleaned = String(rawText || "").trim().replace(/\s+/g, " ").slice(0, 220);
+    if (!targetId || !TARGET_MAP.has(targetId) || !cleaned) return false;
+    const mem = MEMBER_MAP.get(targetId) || MEMBER_MAP.get(state.myMemberUid);
+    const rec = {
+      pid: persistentPid,
+      memberUid: targetId,
+      nick: mem ? mem.nickname : state.myGuestName || "สมาชิกกลุ่ม",
+      text: cleaned,
+      ts: Date.now()
+    };
+
+    state.teamMessagesByTarget.set(targetId, rec);
+    saveSessionStore();
+    publishPacket(`${state.sessionId}/team_msg_set`, { type: "team_msg_set", targetId, record: rec }, false);
+    scheduleSnapshotPublish();
+    playChime([587.33, 783.99, 987.77], 0.11, "triangle", 0.06);
+    renderPreservingFocus();
+    return true;
+  }
+
   function applyIdentityLogin(memberObj) {
     if (!memberObj) return;
     state.myMemberUid = memberObj.uid;
@@ -2489,6 +2639,19 @@
     )}" fill="#9ec5ff" fill-opacity="0.72"/></svg>`;
   }
 
+  function getMemberTeamMessageInfo(uid) {
+    const rec = state.teamMessagesByTarget.get(uid);
+    if (!rec || !String(rec.text || "").trim()) {
+      return { hasText: false, text: "", ts: 0, record: null };
+    }
+    return {
+      hasText: true,
+      text: String(rec.text || "").trim(),
+      ts: rec.ts || 0,
+      record: rec
+    };
+  }
+
   function renderTopBarHtml() {
     const isFac = state.role === "facilitator";
     const myMem = MEMBER_MAP.get(state.myMemberUid);
@@ -2498,6 +2661,7 @@
     const onlineMembers = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
     const isOnHfBoard = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID;
     const isOnRatingOv = state.view === "rating_overview";
+    const isOnTeamMsgOv = state.view === "team_message_overview";
 
     return `
       <div class="tv-topbar-wrap">
@@ -2510,7 +2674,7 @@
                 <span class="tv-brand-main">${isFac ? "Facilitator จอใหญ่ · Kuchi Gang 2569" : "Kuchi Gang 2569 · รพร.กุฉินารายณ์ (21 คน)"}</span>
                 <span class="tv-brand-sub">${
                   isFac
-                    ? "Slide 1 QR → Slide 2 Hopes & Fears → Slide 3 Word Cloud 21 คน → Slide 4 ให้คะแนนสะท้อนตัวตน"
+                    ? "QR → Hopes & Fears → Word Cloud 21 คน → ให้คะแนนสะท้อนตัวตน → 1 เรื่องอยากบอกทีม"
                     : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อดูผลรายคน"
                 }</span>
               </span>
@@ -2559,6 +2723,16 @@
               title="Slide 4: หน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง (1–5) & เหตุผล"
             >
               ⭐ <span>คะแนนสะท้อนตัวตน</span>
+            </button>
+
+            <button
+              type="button"
+              class="tv-pill-btn ${isOnTeamMsgOv ? "is-primary" : ""}"
+              style="${!isOnTeamMsgOv ? "background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6" : ""}"
+              data-act="go-team-msg-overview"
+              title="Slide 5: 1 เรื่องที่แต่ละคนอยากบอกกับทุกคน เพื่อทำงานร่วมกันอย่างราบรื่น"
+            >
+              🤝 <span>1 เรื่องบอกทีม</span>
             </button>
 
             <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀</button>
@@ -2812,6 +2986,9 @@
                 ? `<button type="button" class="tv-pill-btn is-primary" data-act="zoom-in-rating" data-target-id="${esc(state.myMemberUid)}">⭐ ให้คะแนน Word Cloud ของฉัน</button>`
                 : ""
             }
+            <button type="button" class="tv-pill-btn is-primary" data-act="go-team-msg-overview">
+              🤝 ถัดไป: 1 เรื่องอยากบอกทีม (21 คน) ▶
+            </button>
             <button type="button" class="tv-pill-btn" data-act="go-overview">
               ⊞ กลับหน้า Word Cloud 21 คน
             </button>
@@ -2876,12 +3053,95 @@
                     : `
                       <div class="rt-mini-menti" style="padding-top:8px">
                         <div class="rt-mini-track" style="border:1px dashed #cbd5e1;background:#f8fafc"></div>
-                        <div class="rt-mini-axis"><span>Strongly disagree</span><span>รอให้คะแนน...</span></div>
+                        <div class="rt-mini-axis"><span>1.0</span><span>รอให้คะแนน...</span></div>
                       </div>
                       <div class="rt-reason-line is-waiting">
                         ${topPreview ? `☁️ ${esc(topPreview)}` : "รอเจ้าตัวให้คะแนน & เหตุผล..."}
                       </div>
                     `
+                }
+              </button>
+            `;
+          }).join("")}
+        </section>
+      </main>
+    `;
+  }
+
+  /* --- Slide 5: 21-Person Team Message Overview (1 เรื่องที่ '...' อยากบอกกับทุกคน เพื่อทำงานร่วมกันอย่างราบรื่น) --- */
+  function renderTeamMessageOverviewHtml() {
+    const onlineUids = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
+    let sentCount = 0;
+    MEMBERS.forEach((m) => {
+      if (getMemberTeamMessageInfo(m.uid).hasText) sentCount += 1;
+    });
+
+    return `
+      <main class="tv-overview-stage${state.overviewReturningFromId ? " is-zooming-back" : ""}">
+        <div class="tv-overview-banner">
+          <div class="tv-overview-headline" style="max-width:1020px">
+            <h1 style="font-size:clamp(16.5px,1.48vw,24px);line-height:1.3">
+              1 เรื่องที่ <span style="color:#4f46e5">'แต่ละคน'</span> อยากบอกกับทุกคน เพื่อจะได้ทำงานร่วมกันอย่างราบรื่น เข้าใจกัน และสร้างบรรยากาศที่ดีในทีม?
+            </h1>
+            <span class="tv-overview-hint">
+              มือถือของแต่ละคนกำลังเปิดช่องให้พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทั้งกลุ่ม · <strong>แตะการ์ดของแต่ละคนเพื่อขยายข้อความเต็มจอบนหน้าห้อง</strong>
+            </span>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            ${
+              !isTeacherResultOnly() && state.myMemberUid && MEMBER_MAP.has(state.myMemberUid)
+                ? `<button type="button" class="tv-pill-btn is-primary" data-act="zoom-in-team-msg" data-target-id="${esc(state.myMemberUid)}">💬 พิมพ์ 1 เรื่องของฉัน</button>`
+                : ""
+            }
+            <button type="button" class="tv-pill-btn" data-act="go-rating-overview">
+              ⭐ กลับหน้าคะแนนสะท้อนตัวตน
+            </button>
+            <span style="font-size:12.5px;font-weight:800;color:#4f46e5;background:#ffffff;padding:5px 12px;border-radius:999px;border:1.5px solid #c4b5fd">
+              🤝 ส่งข้อความแล้ว ${sentCount}/${MEMBERS.length} คน
+            </span>
+          </div>
+        </div>
+
+        <section class="tv-grid" id="tvOverviewGrid" aria-label="1 เรื่องที่แต่ละคนอยากบอกกับทุกคนในทีม ทั้ง 21 คน">
+          ${MEMBERS.map((m, idx) => {
+            const tmInfo = getMemberTeamMessageInfo(m.uid);
+            const badgeNum = m.kind === "student" ? m.shortNo : "AJ";
+            const isOnline = onlineUids.has(m.uid);
+            const isReturned = state.overviewReturningFromId === m.uid;
+            const isDpad = state.dpadIndex === idx;
+
+            return `
+              <button
+                type="button"
+                class="tv-tile${tmInfo.hasText ? " is-has-words" : ""}${isReturned ? " is-just-returned" : ""}${isDpad ? " is-dpad-focus" : ""}"
+                data-tile-id="${esc(m.uid)}"
+                data-grid-idx="${idx}"
+                data-act="zoom-in-team-msg"
+                data-target-id="${esc(m.uid)}"
+              >
+                <div class="tv-tile-head">
+                  <div class="tv-tile-avatar-wrap">
+                    <img src="${esc(m.photo)}" alt="${esc(m.fullName)}" loading="eager" />
+                    <span class="tv-tile-num-pill">${esc(badgeNum)}</span>
+                    ${isOnline ? `<span class="tv-tile-online-dot" title="เช็คอินออนไลน์แล้ว"></span>` : ""}
+                  </div>
+                  <div class="tv-tile-idbox">
+                    <div class="tv-tile-toprow">
+                      <span class="tv-tile-nick">${esc(m.nickname)}</span>
+                      ${
+                        tmInfo.hasText
+                          ? `<span class="tv-tile-count-badge" style="background:#eef2ff;color:#4338ca">✓ ส่งแล้ว</span>`
+                          : ""
+                      }
+                    </div>
+                    <div class="tv-tile-sub">${esc(m.firstName)}</div>
+                  </div>
+                </div>
+
+                ${
+                  tmInfo.hasText
+                    ? `<div class="tm-mini-quote">“${esc(tmInfo.text)}”</div>`
+                    : `<div class="tm-mini-quote is-waiting">รอเจ้าตัวพิมพ์ 1 เรื่องอยากบอกทีม...</div>`
                 }
               </button>
             `;
@@ -3024,12 +3284,16 @@
     const positioned = !isHfBoard ? computeAdaptiveWordCloud(agg.items, false) : [];
 
     const rInfo = m ? getMemberSelfRatingInfo(m.uid) : { hasScore: false, score: 0, scorePct: 0, reason: "" };
+    const tmInfo = m ? getMemberTeamMessageInfo(m.uid) : { hasText: false, text: "" };
     const displayScore = rInfo.score;
     const scorePct = rInfo.scorePct;
     const isRatingTab = Boolean(m && state.detailTab === "rating");
+    const isTeamMsgTab = Boolean(m && state.detailTab === "team_msg");
 
     const bigQuestionHtml = isHfBoard
       ? `<span class="zm-highlight-name" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);color:#1e3a8a">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?`
+      : isTeamMsgTab && m
+      ? `1 เรื่องที่ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> อยากบอกกับทุกคน เพื่อจะได้ทำงานร่วมกันอย่างราบรื่น เข้าใจกัน และสร้างบรรยากาศที่ดีในทีม?`
       : isRatingTab && m
       ? `ถ้าให้ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้คะแนนกับ Word Cloud ที่เพื่อนๆ สะท้อนมา คิดว่าตรงกับตัวตนที่แท้จริงมากน้อยแค่ไหน? และทำไมถึงให้คะแนนเช่นนั้น?`
       : m
@@ -3038,11 +3302,13 @@
 
     const nextBtnLabel = isHfBoard
       ? "ถัดไป: ภาพรวม 21 คน ▶"
+      : isTeamMsgTab
+      ? "กลับหน้า 1 เรื่องบอกทีม (21 คน) ▶"
       : isRatingTab
-      ? "กลับหน้าคะแนนทั้ง 21 คน ▶"
+      ? "ถัดไป: 1 เรื่องบอกทีม ▶"
       : m
       ? "ดูคะแนนสะท้อนตัวตน ▶"
-      : "กลับหน้าคะแนน 21 คน ▶";
+      : "กลับหน้า 21 คน ▶";
 
     return `
       <main class="tv-zoom-stage-outer">
@@ -3077,7 +3343,10 @@
                     </button>
                     ${
                       m
-                        ? `<button type="button" class="tv-pill-btn ${state.detailTab === "rating" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="rating">⭐ ให้คะแนน 1–5${displayScore > 0 ? ` (${displayScore.toFixed(1)})` : ""}</button>`
+                        ? `
+                          <button type="button" class="tv-pill-btn ${state.detailTab === "rating" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="rating">⭐ ให้คะแนน 1–5${displayScore > 0 ? ` (${displayScore.toFixed(1)})` : ""}</button>
+                          <button type="button" class="tv-pill-btn ${state.detailTab === "team_msg" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="team_msg">🤝 1 เรื่องบอกทีม${tmInfo.hasText ? " ✓" : ""}</button>
+                        `
                         : ""
                     }
                   `
@@ -3137,6 +3406,34 @@
           ${
             tObj.isHfMode
               ? renderThematicAffinityBodyHtml(tObj) + renderStageBottomComposerHtml(tObj, agg)
+              : state.detailTab === "team_msg" && m
+              ? `
+                <div class="tm-stage-card">
+                  <div style="display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap">
+                    <span style="padding:5px 14px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;font-size:13.5px;font-weight:800">
+                      🤝 ข้อความจาก '${esc(m.mentiName)}' ถึงสมาชิกทุกคนในทีม
+                    </span>
+                    <button type="button" class="tv-pill-btn" data-act="go-team-msg-overview">⊞ กลับหน้า 1 เรื่องบอกทีม (21 คน)</button>
+                  </div>
+
+                  ${
+                    tmInfo.hasText
+                      ? `<blockquote class="tm-stage-quote">“${esc(tmInfo.text)}”</blockquote>`
+                      : `<p style="margin:0;font-size:18px;color:#94a3b8;font-weight:600">รอ '${esc(m.nickname)}' พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทั้งกลุ่มจากมือถือ...</p>`
+                  }
+
+                  ${
+                    !isTeacherResultOnly() && state.myMemberUid === m.uid
+                      ? `
+                        <form data-form="phone-send-team-msg" data-target-id="${esc(m.uid)}" style="display:flex;gap:10px;width:100%;max-width:760px;align-items:center;flex-wrap:wrap;margin-top:8px">
+                          <input type="text" name="teamMsg" class="zm-word-input" maxlength="220" placeholder="" aria-label="1 เรื่องที่อยากบอกทุกคนในทีม" value="${esc(tmInfo.text)}" />
+                          <button type="submit" class="zm-send-btn">บันทึกข้อความ</button>
+                        </form>
+                      `
+                      : ""
+                  }
+                </div>
+              `
               : state.detailTab === "rating" && m
               ? `
                 <div class="zm-rating-wrap">
@@ -3336,6 +3633,64 @@
                   เข้าหน้าเลือกหัวข้อ / เลือกคนพิมพ์ทันที →
                 </button>
               </div>
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // Step 2B-TeamMsg: When Facilitator moves to Slide 5 (team_message_overview), Student Phone opens THEIR OWN "1 เรื่องที่อยากบอกทุกคนในทีม"!
+    if (state.view === "team_message_overview" && !state.phonePickedTargetId && myMem) {
+      const myTmInfo = getMemberTeamMessageInfo(myMem.uid);
+
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner">
+                <span>🤝 1 เรื่องที่อยากบอกทุกคนในทีม</span>
+              </div>
+
+              <div class="ph-person-banner">
+                <img src="${esc(myMem.photo)}" alt="${esc(myMem.nickname)}" />
+                <div style="min-width:0">
+                  <div style="font-size:12px;font-weight:800;color:#4f46e5">🌟 ข้อความจาก '${esc(myMem.mentiName)}'</div>
+                  <div style="font-size:13px;color:#475569">${esc(myMem.fullName)}</div>
+                </div>
+              </div>
+
+              <h1 class="ph-big-question" style="font-size:18px">
+                1 เรื่องที่ <span class="zm-highlight-name">'${esc(myMem.mentiName)}'</span> อยากบอกกับทุกคน เพื่อจะได้ทำงานร่วมกันอย่างราบรื่น เข้าใจกัน และสร้างบรรยากาศที่ดีในทีม?
+              </h1>
+
+              ${
+                state.phoneTeamMsgDone && myTmInfo.hasText
+                  ? `
+                    <div class="ph-standby-box" style="background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:20px;padding:20px 16px">
+                      <div style="font-size:34px;line-height:1">🤝</div>
+                      <strong style="font-size:18px;color:#0f172a">ส่งข้อความขึ้นจอใหญ่เรียบร้อยแล้ว!</strong>
+                      <p style="margin:0;font-size:15px;font-weight:700;color:#312e81;line-height:1.45">“${esc(myTmInfo.text)}”</p>
+                      <button type="button" class="tv-pill-btn" style="margin-top:8px" data-act="phone-edit-team-msg">✏️ แก้ไขข้อความ</button>
+                    </div>
+                  `
+                  : `
+                    <form data-form="phone-send-team-msg" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
+                      <textarea
+                        id="phTeamMsgInput"
+                        name="teamMsg"
+                        class="ph-postit-textarea"
+                        style="min-height:104px;background:#f8fafc;border-color:#c7d2fe"
+                        maxlength="220"
+                        placeholder=""
+                      >${esc(myTmInfo.text || "")}</textarea>
+
+                      <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#4f46e5,#2563eb)">
+                        🤝 ส่งข้อความขึ้นจอใหญ่!
+                      </button>
+                    </form>
+                  `
+              }
             </section>
           </main>
         `
@@ -3919,7 +4274,7 @@
   }
 
   function renderPreservingFocus() {
-    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phHfInput", "phReasonInput", "pin3Input"];
+    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phHfInput", "phReasonInput", "phTeamMsgInput", "pin3Input"];
     const savedValues = {};
     preserveIds.forEach((id) => {
       const el = document.getElementById(id);
@@ -4167,6 +4522,8 @@
         ? renderFacilitatorLobbyHtml()
         : state.view === "detail"
         ? renderZoomedDetailHtml()
+        : state.view === "team_message_overview"
+        ? renderTeamMessageOverviewHtml()
         : state.view === "rating_overview"
         ? renderRatingOverviewHtml()
         : renderOverviewHtml();
@@ -4238,8 +4595,15 @@
       const gIdx = Number(btn.getAttribute("data-grid-idx"));
       if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
       zoomIntoTarget(tid, btn, false, false, "rating");
+    } else if (act === "zoom-in-team-msg") {
+      const tid = btn.getAttribute("data-target-id");
+      const gIdx = Number(btn.getAttribute("data-grid-idx"));
+      if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
+      zoomIntoTarget(tid, btn, false, false, "team_msg");
     } else if (act === "go-rating-overview") {
       goToRatingOverview(false, false);
+    } else if (act === "go-team-msg-overview") {
+      goToTeamMessageOverview(false, false);
     } else if (act === "go-overview") {
       zoomOutToOverview(false, false, "overview");
     } else if (act === "set-hf-polarity") {
@@ -4339,6 +4703,13 @@
     } else if (act === "phone-edit-self-rating") {
       state.phoneSelfRatedDone = false;
       render();
+    } else if (act === "phone-edit-team-msg") {
+      state.phoneTeamMsgDone = false;
+      render();
+      setTimeout(() => {
+        const el = document.getElementById("phTeamMsgInput");
+        if (el) el.focus();
+      }, 40);
     } else if (act === "phone-open-peer-grid-temp") {
       state.view = "overview";
       state.phonePickedTargetId = "";
@@ -4453,6 +4824,7 @@
         session: state.sessionId,
         words: Object.fromEntries(Array.from(state.wordsByTarget.entries()).map(([k, mp]) => [k, Array.from(mp.values())])),
         ratings: Object.fromEntries(Array.from(state.ratingsByTarget.entries()).map(([k, mp]) => [k, Array.from(mp.values())])),
+        teamMessages: Object.fromEntries(state.teamMessagesByTarget.entries()),
         customThemes: Object.fromEntries(state.customThemeTitles.entries())
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
@@ -4544,6 +4916,18 @@
       const rs = form.elements.reason ? form.elements.reason.value : "";
       state.phoneSelfRatedDone = true;
       submitRating(tid, sc, rs);
+    } else if (fType === "phone-send-team-msg") {
+      ev.preventDefault();
+      const tid = form.getAttribute("data-target-id");
+      const inp = form.elements.teamMsg;
+      if (!inp || !String(inp.value || "").trim()) {
+        if (inp) inp.focus();
+        return;
+      }
+      if (submitTeamMessage(tid, inp.value)) {
+        state.phoneTeamMsgDone = true;
+        render();
+      }
     }
   });
 
@@ -4604,7 +4988,7 @@
       return;
     }
 
-    if (state.view === "overview" || state.view === "rating_overview") {
+    if (state.view === "overview" || state.view === "rating_overview" || state.view === "team_message_overview") {
       const gridEl = document.getElementById("tvOverviewGrid");
       const totalTiles = MEMBERS.length;
       let cols = 7;
