@@ -1,23 +1,31 @@
 /* ==========================================================================
-   RACM 303 (2569) — Kuchi Gang 2569 Apple TV Overview & Zoom-In Question App
-   - Opens directly on 24-Tile Overview Board (22 Members + Trip Topic + QR)
-   - Apple TV (tvOS) Origin-Anchored Zoom-In -> Big Question + Live Word Cloud
-   - Compatible & Optimal Font Size for Mobile V/H, Duo/Fold, Tablet V/H, PC 16:9
-   - Real-Time Sync: MQTT over WSS + PeerJS WebRTC + BroadcastChannel + Storage
+   RACM 303 (2569) — Kuchi Gang 2569 Interactive Presentation & Live Sync Engine
+   - 21 Members (พี่สมาร์ท 1 + นศพ. 20 คน)
+   - 3 Coordinated Entry Modes:
+     1) facilitator.html (#facilitator): Slide 1 Giant QR Lobby + Master Big-Screen
+        Navigation that FORCES every scanned phone to follow in lockstep!
+     2) join.html (#join): Full-Screen Student Type-Answer Controller (Mentimeter/Kahoot)
+        synced in real time to Facilitator's Big Screen while watching results on projector
+     3) index.html: Direct 21-Card Apple TV Overview Board (7x3 on 16:9 PC) with
+        Apple TV Zoom-In / Zoom-Out + 1-click switch to Facilitator Mode
+   - Universal "← ย้อนกลับ (1 หน้าก่อนหน้า)" + "🏠 หน้าหลักใหญ่" in every view & modal
+   - Zero stopPropagation() modal bug: every card & button is 100% clickable
    ========================================================================== */
 (function () {
   "use strict";
 
   const DATA = window.KUCHI_DATA || { meta: {}, members: [], sessions: [], roadmap: [], objectives5: [] };
-  const MEMBERS = DATA.members || [];
+  const MEMBERS = (DATA.members || []).filter((m) => m && m.uid !== "m_fluke");
   const MEMBER_MAP = new Map(MEMBERS.map((m) => [m.uid, m]));
 
   const TOPIC_TRIP_ID = "topic_kuchinarai_expect";
-  const TOPIC_ROOT = "racm303/2569/kuchi_gang/v1";
-  const BC_NAME = "racm303_2569_kuchi_gang_bc_v1";
+  const TOPIC_ROOT = "racm303/2569/kuchi_gang/v2";
+  const BC_NAME = "racm303_2569_kuchi_gang_bc_v2";
+  const FAC_PEER_ID = "racm303-2569-kuchi-fac-master-v2";
+  const LS_MASTER_PTR = "kuchi2569_master_ptr_v2";
   const BROKERS = [
-    "wss://mqtt.eclipseprojects.io:443/mqtt",
-    "wss://broker.emqx.io:8084/mqtt"
+    "wss://broker.emqx.io:8084/mqtt",
+    "wss://mqtt.eclipseprojects.io:443/mqtt"
   ];
 
   const MENTI_COLORS = [
@@ -31,7 +39,7 @@
 
   const QUICK_EMOJIS = ["🙏", "🔥", "💅", "🦕", "🤖", "💯", "🥰", "😎", "🩺", "🎸", "🍜", "😴", "🧗‍♀️", "✌️"];
 
-  /* Ordered list of zoomable targets (22 members + 1 trip expectations topic) */
+  /* Ordered list of zoomable targets (21 members + 1 trip expectations topic) */
   const TARGET_LIST = MEMBERS.map((m) => ({
     id: m.uid,
     isTopic: false,
@@ -47,7 +55,7 @@
   ]);
   const TARGET_MAP = new Map(TARGET_LIST.map((t) => [t.id, t]));
 
-  /* ---------- 1. Helpers & Safe Storage ---------- */
+  /* ---------- 1. Helpers, URL Resolution & Safe Storage ---------- */
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
@@ -75,17 +83,39 @@
     } catch (_) {}
   }
 
-  function getJoinUrl() {
+  function getBaseDirUrl() {
     if (typeof window !== "undefined" && /^https?:/i.test(window.location.protocol)) {
       const clean = window.location.href.split("#")[0].split("?")[0];
-      return `${clean}#join`;
+      return clean.replace(/\/[^/]*$/, "/");
     }
-    return `${DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-kuchinarai/"}#join`;
+    return DATA.meta.prodBaseUrl || "https://smartwoo.github.io/racm303-2569-kuchinarai/";
+  }
+
+  /* Student-safe QR Join URL (Never points students to faculty-member domain!) */
+  function getJoinUrl() {
+    const base = getBaseDirUrl();
+    let studentSafeBase = base;
+    if (/racm303-2569-faculty-member/i.test(base)) {
+      studentSafeBase = base.replace(/racm303-2569-faculty-member/gi, "racm303-2569-student");
+    }
+    const qs = state && state.sessionId && state.sessionId !== "sg1_intro" ? `?s=${encodeURIComponent(state.sessionId)}` : "";
+    return `${studentSafeBase}join.html${qs}`;
+  }
+
+  function getFacilitatorUrl() {
+    return `${getBaseDirUrl()}facilitator.html`;
+  }
+
+  function getOverviewPageUrl() {
+    return `${getBaseDirUrl()}index.html`;
   }
 
   function resolveMainPortalUrl() {
     const href = String((typeof window !== "undefined" && window.location && window.location.href) || "");
     const ref = String((typeof document !== "undefined" && document.referrer) || "");
+    if (state && state.role === "participant") {
+      return DATA.meta.studentPortalUrl || "https://smartwoo.github.io/racm303-2569-student/";
+    }
     if (/faculty-member/i.test(href) || /faculty-member/i.test(ref)) {
       return DATA.meta.facultyPortalUrl || "https://smartwoo.github.io/racm303-2569-faculty-member/";
     }
@@ -190,8 +220,9 @@
 
   const qrCache = new Map();
   function buildQrSvg(text) {
-    if (qrCache.has(text)) return qrCache.get(text);
-    const raw = new TextEncoder().encode(String(text || getJoinUrl()));
+    const targetText = String(text || getJoinUrl());
+    if (qrCache.has(targetText)) return qrCache.get(targetText);
+    const raw = new TextEncoder().encode(targetText);
     const n = raw.length;
     let ver = 10;
     for (let v = 1; v <= 10; v += 1) {
@@ -387,14 +418,14 @@
       }
     }
     const svg = `<svg viewBox="0 0 ${vb} ${vb}" shape-rendering="crispEdges" role="img" aria-label="QR Code เข้าร่วมกลุ่มกุฉินารายณ์"><rect width="${vb}" height="${vb}" fill="#ffffff"/><path d="${pathD}" fill="#0f172a"/></svg>`;
-    qrCache.set(text, svg);
+    qrCache.set(targetText, svg);
     return svg;
   }
 
-  /* ---------- 3. Lightweight Apple TV Sound Effects ---------- */
+  /* ---------- 3. Lightweight Sound Effects ---------- */
   let audioCtx = null;
   function playChime(freqs, durSec, type, vol) {
-    if (state.muted) return;
+    if (state && state.muted) return;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -417,7 +448,7 @@
     } catch (_) {}
   }
 
-  /* ---------- 4. State (ALWAYS Starts on Overview!) ---------- */
+  /* ---------- 4. Role & State Initialization ---------- */
   const cliId = randId("cli");
   const persistentPid = (function () {
     let p = sGet("kuchi2569_pid", "");
@@ -428,23 +459,54 @@
     return p;
   })();
 
-  const initialHash = (window.location.hash || "").replace(/^#/, "").trim();
-  const startedFromQrJoin = initialHash.toLowerCase() === "join" || initialHash.toLowerCase() === "live";
+  const pathname = String((window.location && window.location.pathname) || "");
+  const initialHash = String((window.location && window.location.hash) || "").replace(/^#/, "").trim();
+  const urlParams = (function () {
+    try {
+      return new URLSearchParams(window.location.search || "");
+    } catch (_) {
+      return { get: () => null };
+    }
+  })();
+
+  const detectedRole = (function () {
+    const explicit = String(window.KUCHI_ROLE || "").toLowerCase();
+    const h = initialHash.toLowerCase();
+    if (explicit === "facilitator" || /facilitator\.html$/i.test(pathname) || h === "facilitator" || h === "host") {
+      return "facilitator";
+    }
+    if (explicit === "participant" || /join\.html$/i.test(pathname) || h === "join" || h === "live") {
+      return "participant";
+    }
+    return "explorer";
+  })();
+
   const initialDirectTarget = TARGET_MAP.has(initialHash) ? initialHash : "";
+  const savedUidRaw = sGet("kuchi2569_my_uid", "");
+  const sanitizedSavedUid = MEMBER_MAP.has(savedUidRaw) ? savedUidRaw : "";
+  if (savedUidRaw && !sanitizedSavedUid) sSet("kuchi2569_my_uid", "");
+
+  const paramSession = urlParams.get("s");
+  const validSessionIds = new Set((DATA.sessions || []).map((s) => s.id));
+  const initialSessionId = paramSession && validSessionIds.has(paramSession) ? paramSession : sGet("kuchi2569_session", "sg1_intro");
+  if (paramSession && validSessionIds.has(paramSession)) {
+    sSet("kuchi2569_session", initialSessionId);
+  }
 
   const state = {
-    // ALWAYS open directly on "overview" unless deep-linked to a specific person!
-    view: initialDirectTarget ? "detail" : "overview",
+    role: detectedRole, // "facilitator" | "participant" | "explorer"
+    // Facilitator starts on Slide 1 Giant QR Lobby ("lobby"); Explorer starts on 21-Member Overview ("overview")
+    view: initialDirectTarget ? "detail" : detectedRole === "facilitator" ? "lobby" : "overview",
     activeTargetId: initialDirectTarget || "m_smart",
     detailTab: "wordcloud", // "wordcloud" | "rating"
     overviewReturningFromId: "",
     isAnimatingZoomOut: false,
     dpadIndex: 0,
 
-    sessionId: sGet("kuchi2569_session", "sg1_intro"),
+    sessionId: initialSessionId,
     pointerSeq: 0,
     hideWordsUntilReveal: false,
-    showComposerOnStage: true,
+    showComposerOnStage: detectedRole !== "facilitator", // Clean Big-Screen Results for Facilitator!
     muted: sGet("kuchi2569_muted", "0") === "1",
 
     // Roulette
@@ -452,18 +514,24 @@
     rouletteFlashUid: "",
     pickedUids: new Set(),
 
-    // Participant / Sync preferences
-    myMemberUid: sGet("kuchi2569_my_uid", ""),
+    // Participant / Phone Controller State
+    myMemberUid: sanitizedSavedUid,
     myGuestName: sGet("kuchi2569_guest_name", ""),
-    followHost: startedFromQrJoin,
-    identityModalOpen: startedFromQrJoin && !sGet("kuchi2569_my_uid", "") && !sGet("kuchi2569_guest_name", ""),
+    followHost: detectedRole === "participant",
+    hasSeenFacilitator: false,
+    phonePickingIdentity: false,
+    phoneManualOverride: false,
+    phoneJustSubmittedTargetId: "",
+    phoneDraftRating: 4.5,
+    activeEmojiInputId: "phW1",
 
-    // Modals
+    // Modals (for Facilitator / Explorer)
     qrModalOpen: false,
+    identityModalOpen: false,
     roadmapModalOpen: false,
     resultsModalTargetId: "",
 
-    // Step-by-step navigation history stack for "Back 1 Screen"
+    // Step-by-step navigation stack for "← ย้อนกลับ (1 หน้าก่อนหน้า)"
     navStack: [],
 
     // Live synced data
@@ -476,11 +544,24 @@
     bc: null,
     peer: null,
     peerConns: new Map(),
-    hostConn: null,
+    facPeerConn: null,
     connectedCount: 0
   };
 
-  /* Cache of last tile screen coordinates for Apple TV FLIP Zoom-In / Zoom-Out */
+  /* Restore last local master pointer immediately if Phone opens in same browser */
+  if (state.role === "participant") {
+    try {
+      const rawPtr = sGet(LS_MASTER_PTR, "");
+      if (rawPtr) {
+        const ptr = JSON.parse(rawPtr);
+        if (ptr && ptr.sentMs && Date.now() - ptr.sentMs < 4 * 3600 * 1000) {
+          applyMasterPointerToPhone(ptr, true);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /* ---------- 5. Apple TV FLIP Origin Calculation ---------- */
   const tileOriginCache = new Map();
 
   function setZoomOrigin(ox, oy) {
@@ -510,7 +591,7 @@
     }
   }
 
-  /* ---------- 5. Navigation History Stack + Apple TV Zoom-In & Zoom-Out ---------- */
+  /* ---------- 6. Navigation History Stack + Apple TV Zoom Transitions ---------- */
   function captureNavSnap() {
     return {
       view: state.view,
@@ -519,7 +600,9 @@
       qrModalOpen: state.qrModalOpen,
       identityModalOpen: state.identityModalOpen,
       roadmapModalOpen: state.roadmapModalOpen,
-      resultsModalTargetId: state.resultsModalTargetId
+      resultsModalTargetId: state.resultsModalTargetId,
+      phonePickingIdentity: state.phonePickingIdentity,
+      phoneJustSubmittedTargetId: state.phoneJustSubmittedTargetId
     };
   }
 
@@ -532,7 +615,9 @@
       a.qrModalOpen === b.qrModalOpen &&
       a.identityModalOpen === b.identityModalOpen &&
       a.roadmapModalOpen === b.roadmapModalOpen &&
-      a.resultsModalTargetId === b.resultsModalTargetId
+      a.resultsModalTargetId === b.resultsModalTargetId &&
+      a.phonePickingIdentity === b.phonePickingIdentity &&
+      a.phoneJustSubmittedTargetId === b.phoneJustSubmittedTargetId
     );
   }
 
@@ -558,6 +643,31 @@
   function stepBackOneScreen() {
     if (state.isAnimatingZoomOut || state.rouletteSpinning) return;
 
+    // Phone mode step-back handling
+    if (state.role === "participant") {
+      if (state.phonePickingIdentity && (state.myMemberUid || state.myGuestName)) {
+        state.phonePickingIdentity = false;
+        render();
+        return;
+      }
+      if (state.phoneJustSubmittedTargetId) {
+        state.phoneJustSubmittedTargetId = "";
+        render();
+        return;
+      }
+      if (state.phoneManualOverride && state.view === "detail") {
+        state.view = "overview";
+        render();
+        return;
+      }
+      if (window.history.length > 1 && document.referrer) {
+        window.history.back();
+      } else {
+        window.location.href = resolveMainPortalUrl();
+      }
+      return;
+    }
+
     while (state.navStack.length > 0) {
       const prev = state.navStack.pop();
       if (isSameSnap(prev, captureNavSnap())) continue;
@@ -579,16 +689,15 @@
         return;
       }
 
-      state.view = prev.view || "overview";
+      state.view = prev.view || (state.role === "facilitator" ? "lobby" : "overview");
       state.activeTargetId = prev.activeTargetId || "m_smart";
       state.detailTab = prev.detailTab || "wordcloud";
       playChime([523.25, 440], 0.08, "sine", 0.04);
-      broadcastPointer();
+      broadcastMasterPointer(false);
       render();
       return;
     }
 
-    // No internal history left: if currently inside a modal or detail view, step back to Overview first
     if (hasAnyOpenModal()) {
       clearAllModals();
       render();
@@ -598,13 +707,25 @@
       zoomOutToOverview(false, true);
       return;
     }
+    if (state.role === "facilitator" && state.view === "overview") {
+      goToLobbySlide1(true);
+      return;
+    }
 
-    // Already at root Overview: go back 1 browser page, or fall back to Main RACM 303 Portal
     if (window.history.length > 1 && document.referrer) {
       window.history.back();
     } else {
       window.location.href = resolveMainPortalUrl();
     }
+  }
+
+  function goToLobbySlide1(skipHistory) {
+    if (!skipHistory) pushNavHistory();
+    clearAllModals();
+    state.view = "lobby";
+    playChime([523.25, 659.25], 0.09, "sine", 0.04);
+    broadcastMasterPointer(false);
+    render();
   }
 
   function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory) {
@@ -625,25 +746,26 @@
       setTimeout(() => {
         state.view = "detail";
         state.activeTargetId = targetId;
-        if (!skipHistory) state.detailTab = "wordcloud";
+        if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
         const tObj = TARGET_MAP.get(targetId);
         if (tObj && tObj.member) {
           state.pickedUids.add(tObj.member.uid);
           saveSessionStore();
         }
-        if (!isRemoteSync) broadcastPointer();
+        if (!isRemoteSync) broadcastMasterPointer(false);
         render();
       }, 150);
     } else {
+      state.view = "detail";
       state.activeTargetId = targetId;
-      if (!skipHistory) state.detailTab = "wordcloud";
+      if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
       const tObj = TARGET_MAP.get(targetId);
       if (tObj && tObj.member) {
         state.pickedUids.add(tObj.member.uid);
         saveSessionStore();
       }
       playChime([523.25, 659.25], 0.09, "sine", 0.04);
-      if (!isRemoteSync) broadcastPointer();
+      if (!isRemoteSync) broadcastMasterPointer(false);
       render();
     }
   }
@@ -656,6 +778,14 @@
         render();
         return;
       }
+    }
+    if (state.view === "lobby") {
+      if (!isRemoteSync && !skipHistory) pushNavHistory();
+      state.view = "overview";
+      playChime([440, 587.33], 0.1, "sine", 0.045);
+      if (!isRemoteSync) broadcastMasterPointer(false);
+      render();
+      return;
     }
     if (state.view === "overview" || state.isAnimatingZoomOut) return;
     if (!isRemoteSync && !skipHistory) {
@@ -673,7 +803,7 @@
       state.isAnimatingZoomOut = false;
       state.view = "overview";
       state.overviewReturningFromId = prevId;
-      if (!isRemoteSync) broadcastPointer();
+      if (!isRemoteSync) broadcastMasterPointer(false);
       render();
       setTimeout(() => {
         if (state.overviewReturningFromId === prevId) {
@@ -686,7 +816,7 @@
   function stepZoomedTarget(delta) {
     const idx = TARGET_LIST.findIndex((t) => t.id === state.activeTargetId);
     const nextIdx = (idx + delta + TARGET_LIST.length) % TARGET_LIST.length;
-    zoomIntoTarget(TARGET_LIST[nextIdx].id, null, false);
+    zoomIntoTarget(TARGET_LIST[nextIdx].id, null, false, false);
   }
 
   function spinAppleTvRoulette() {
@@ -695,6 +825,7 @@
     clearAllModals();
     if (state.view !== "overview") {
       state.view = "overview";
+      broadcastMasterPointer(false);
       render();
     }
 
@@ -733,7 +864,7 @@
     runStep();
   }
 
-  /* ---------- 6. Session Local Persistence ---------- */
+  /* ---------- 7. Session Local Persistence ---------- */
   function storageKeyForSession(sessId) {
     return `kuchi2569_store_${sessId || "sg1_intro"}`;
   }
@@ -742,10 +873,12 @@
     try {
       const wordsObj = {};
       state.wordsByTarget.forEach((m, tid) => {
+        if (tid === "m_fluke") return;
         wordsObj[tid] = Array.from(m.values());
       });
       const ratingsObj = {};
       state.ratingsByTarget.forEach((m, tid) => {
+        if (tid === "m_fluke") return;
         ratingsObj[tid] = Array.from(m.values());
       });
       sSet(
@@ -753,7 +886,7 @@
         JSON.stringify({
           words: wordsObj,
           ratings: ratingsObj,
-          picked: Array.from(state.pickedUids)
+          picked: Array.from(state.pickedUids).filter((u) => u !== "m_fluke")
         })
       );
     } catch (_) {}
@@ -769,6 +902,7 @@
       const parsed = JSON.parse(raw);
       if (parsed && parsed.words) {
         Object.keys(parsed.words).forEach((tid) => {
+          if (!TARGET_MAP.has(tid)) return;
           const mp = new Map();
           (parsed.words[tid] || []).forEach((item) => {
             if (item && item.subId && item.text) mp.set(item.subId, item);
@@ -778,6 +912,7 @@
       }
       if (parsed && parsed.ratings) {
         Object.keys(parsed.ratings).forEach((tid) => {
+          if (!TARGET_MAP.has(tid)) return;
           const mp = new Map();
           (parsed.ratings[tid] || []).forEach((item) => {
             if (item && item.pid && Number.isFinite(Number(item.score))) mp.set(item.pid, item);
@@ -786,27 +921,29 @@
         });
       }
       if (parsed && Array.isArray(parsed.picked)) {
-        parsed.picked.forEach((u) => state.pickedUids.add(u));
+        parsed.picked.forEach((u) => {
+          if (MEMBER_MAP.has(u)) state.pickedUids.add(u);
+        });
       }
     } catch (_) {}
   }
 
   loadSessionStore(state.sessionId);
 
-  /* ---------- 7. Real-Time Multi-Transport Sync Engine ---------- */
+  /* ---------- 8. Real-Time Forced Sync Engine (MQTT + PeerJS + BroadcastChannel + Storage) ---------- */
   const seenMsgIds = new Set();
   function rememberMsg(id) {
     if (!id) return false;
     if (seenMsgIds.has(id)) return true;
     seenMsgIds.add(id);
-    if (seenMsgIds.size > 2000) {
+    if (seenMsgIds.size > 2400) {
       const first = seenMsgIds.values().next().value;
       seenMsgIds.delete(first);
     }
     return false;
   }
 
-  function publishPacket(subtopic, payload, retain) {
+  function publishPacket(topicSuffix, payload, retain) {
     const msg = Object.assign({}, payload, {
       msgId: randId("m"),
       senderCli: cliId,
@@ -818,11 +955,11 @@
 
     if (state.bc) {
       try {
-        state.bc.postMessage({ subtopic, msg });
+        state.bc.postMessage({ topicSuffix, msg });
       } catch (_) {}
     }
 
-    const fullTopic = `${TOPIC_ROOT}/${state.sessionId}/${subtopic}`;
+    const fullTopic = `${TOPIC_ROOT}/${topicSuffix}`;
     state.mqttClients.forEach((cl) => {
       try {
         if (cl && cl.connected) {
@@ -831,32 +968,37 @@
       } catch (_) {}
     });
 
-    const env = { subtopic, msg };
+    const env = { topicSuffix, msg };
     state.peerConns.forEach((c) => {
       try {
         if (c && c.open) c.send(env);
       } catch (_) {}
     });
-    if (state.hostConn && state.hostConn.open) {
+    if (state.facPeerConn && state.facPeerConn.open) {
       try {
-        state.hostConn.send(env);
+        state.facPeerConn.send(env);
       } catch (_) {}
     }
   }
 
-  function broadcastPointer() {
-    state.pointerSeq += 1;
-    publishPacket(
-      "pointer",
-      {
-        type: "pointer",
-        view: state.view,
-        targetId: state.activeTargetId,
-        detailTab: state.detailTab,
-        pointerSeq: state.pointerSeq
-      },
-      true
-    );
+  /* ONLY Facilitator broadcasts authoritative master_pointer to lock all phones! */
+  function broadcastMasterPointer(isHeartbeat) {
+    if (state.role !== "facilitator") return;
+    if (!isHeartbeat) state.pointerSeq += 1;
+    const pkt = {
+      type: "master_pointer",
+      fromFacilitator: true,
+      isHeartbeat: Boolean(isHeartbeat),
+      sessionId: state.sessionId,
+      view: state.view, // "lobby" | "overview" | "detail"
+      targetId: state.activeTargetId,
+      detailTab: state.detailTab,
+      hideWords: state.hideWordsUntilReveal,
+      pointerSeq: state.pointerSeq,
+      sentMs: Date.now()
+    };
+    sSet(LS_MASTER_PTR, JSON.stringify(pkt));
+    publishPacket("master/pointer", pkt, true);
   }
 
   let snapshotTimer = 0;
@@ -865,26 +1007,23 @@
     snapshotTimer = setTimeout(() => {
       const wordsCompact = {};
       state.wordsByTarget.forEach((mp, tid) => {
-        wordsCompact[tid] = Array.from(mp.values()).slice(-160);
+        wordsCompact[tid] = Array.from(mp.values()).slice(-180);
       });
       const ratingsCompact = {};
       state.ratingsByTarget.forEach((mp, tid) => {
         ratingsCompact[tid] = Array.from(mp.values());
       });
       publishPacket(
-        "snapshot",
+        `${state.sessionId}/snapshot`,
         {
           type: "snapshot",
-          view: state.view,
-          targetId: state.activeTargetId,
-          detailTab: state.detailTab,
           words: wordsCompact,
           ratings: ratingsCompact,
           picked: Array.from(state.pickedUids)
         },
         true
       );
-    }, 360);
+    }, 340);
   }
 
   function publishMyPresence() {
@@ -896,16 +1035,58 @@
       memberUid: mem ? mem.uid : "",
       nick,
       photo: mem ? mem.photo : "",
+      role: state.role,
       ts: Date.now()
     };
     state.presence.set(persistentPid, rec);
-    publishPacket("presence", Object.assign({ type: "presence" }, rec), false);
+    publishPacket("global/presence", Object.assign({ type: "presence" }, rec), false);
+  }
+
+  function applyMasterPointerToPhone(msg, isInitialBoot) {
+    if (!msg || !msg.fromFacilitator) return;
+    state.hasSeenFacilitator = true;
+    state.phoneManualOverride = false;
+
+    let changed = false;
+    if (msg.sessionId && validSessionIds.has(msg.sessionId) && msg.sessionId !== state.sessionId) {
+      state.sessionId = msg.sessionId;
+      sSet("kuchi2569_session", state.sessionId);
+      loadSessionStore(state.sessionId);
+      changed = true;
+    }
+
+    const nextView = msg.view === "detail" && TARGET_MAP.has(msg.targetId) ? "detail" : msg.view === "lobby" ? "lobby" : "overview";
+    const nextTarget = TARGET_MAP.has(msg.targetId) ? msg.targetId : state.activeTargetId;
+    const nextTab = msg.detailTab === "rating" ? "rating" : "wordcloud";
+
+    if (state.view !== nextView || state.activeTargetId !== nextTarget || state.detailTab !== nextTab) {
+      const targetChanged = state.activeTargetId !== nextTarget || state.view !== nextView;
+      state.view = nextView;
+      state.activeTargetId = nextTarget;
+      state.detailTab = nextTab;
+      if (targetChanged) {
+        state.phoneJustSubmittedTargetId = "";
+      }
+      changed = true;
+
+      if (!isInitialBoot && !msg.isHeartbeat && state.role === "participant" && nextView === "detail") {
+        try {
+          if (navigator.vibrate) navigator.vibrate(35);
+        } catch (_) {}
+        playChime([523.25, 783.99], 0.08, "sine", 0.035);
+      }
+    }
+
+    if (changed && !isInitialBoot) {
+      renderPreservingFocus();
+    }
   }
 
   function mergeSnapshot(msg) {
     let changed = false;
     if (msg.words && typeof msg.words === "object") {
       Object.keys(msg.words).forEach((tid) => {
+        if (!TARGET_MAP.has(tid)) return;
         if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
         const mp = state.wordsByTarget.get(tid);
         (msg.words[tid] || []).forEach((w) => {
@@ -918,6 +1099,7 @@
     }
     if (msg.ratings && typeof msg.ratings === "object") {
       Object.keys(msg.ratings).forEach((tid) => {
+        if (!TARGET_MAP.has(tid)) return;
         if (!state.ratingsByTarget.has(tid)) state.ratingsByTarget.set(tid, new Map());
         const mp = state.ratingsByTarget.get(tid);
         (msg.ratings[tid] || []).forEach((r) => {
@@ -932,43 +1114,81 @@
       });
     }
     if (Array.isArray(msg.picked)) {
-      msg.picked.forEach((u) => state.pickedUids.add(u));
+      msg.picked.forEach((u) => {
+        if (MEMBER_MAP.has(u)) state.pickedUids.add(u);
+      });
     }
     if (changed) saveSessionStore();
     return changed;
   }
 
-  function handleIncoming(subtopic, msg, isRetained) {
+  function handleIncoming(topicSuffix, msg, isRetained) {
     if (!msg || typeof msg !== "object") return;
     if (msg.senderCli === cliId) return;
     if (rememberMsg(msg.msgId)) return;
 
-    if (msg.sessionId && msg.sessionId !== state.sessionId) {
-      if (state.followHost && (msg.type === "pointer" || msg.type === "snapshot") && !isRetained) {
-        state.sessionId = msg.sessionId;
-        sSet("kuchi2569_session", state.sessionId);
-        loadSessionStore(state.sessionId);
-      } else {
+    // 1. Authoritative Facilitator Pointer -> Locks all Participant Phones (and Explorers with followHost=true)
+    if (msg.type === "master_pointer" && msg.fromFacilitator) {
+      if (isRetained && msg.sentMs && Date.now() - msg.sentMs > 6 * 3600 * 1000) {
         return;
       }
-    }
-
-    if (msg.type === "pointer") {
-      if (state.followHost && !isRetained) {
-        if (msg.view === "overview") {
-          zoomOutToOverview(true);
-        } else if (msg.targetId && TARGET_MAP.has(msg.targetId)) {
-          if (msg.detailTab) state.detailTab = msg.detailTab;
-          zoomIntoTarget(msg.targetId, null, true);
+      if (state.role === "participant") {
+        applyMasterPointerToPhone(msg, false);
+      } else if (state.role === "explorer" && state.followHost) {
+        if (msg.sessionId && validSessionIds.has(msg.sessionId) && msg.sessionId !== state.sessionId) {
+          state.sessionId = msg.sessionId;
+          loadSessionStore(state.sessionId);
         }
-      } else if (state.followHost && isRetained && msg.targetId && TARGET_MAP.has(msg.targetId)) {
-        state.view = msg.view === "overview" ? "overview" : "detail";
-        state.activeTargetId = msg.targetId;
-        if (msg.detailTab) state.detailTab = msg.detailTab;
-        render();
+        if (msg.view === "detail" && TARGET_MAP.has(msg.targetId)) {
+          state.detailTab = msg.detailTab || "wordcloud";
+          if (state.view !== "detail" || state.activeTargetId !== msg.targetId) {
+            zoomIntoTarget(msg.targetId, null, true, true);
+          } else {
+            renderPreservingFocus();
+          }
+        } else if (state.view === "detail") {
+          zoomOutToOverview(true, true);
+        }
       }
       return;
     }
+
+    // 2. Global Presence Check-In (Updates Slide 1 Check-In Wall live!)
+    if (msg.type === "presence") {
+      if (msg.pid && msg.nick) {
+        const hadUid = Array.from(state.presence.values()).some((p) => p.memberUid && p.memberUid === msg.memberUid);
+        state.presence.set(msg.pid, {
+          pid: msg.pid,
+          memberUid: msg.memberUid || "",
+          nick: msg.nick,
+          photo: msg.photo || "",
+          ts: Date.now()
+        });
+        if (state.role === "facilitator" && state.view === "lobby") {
+          if (!hadUid && msg.memberUid && !isRetained) {
+            playChime([587.33, 880], 0.08, "sine", 0.04);
+          }
+          renderPreservingFocus();
+        } else {
+          updateConnBadgeOnly();
+        }
+      }
+      return;
+    }
+
+    // 3. Hello Request -> Facilitator immediately answers with master_pointer + snapshot!
+    if (msg.type === "hello_request" && !isRetained) {
+      if (state.role === "facilitator") {
+        broadcastMasterPointer(true);
+        scheduleSnapshotPublish();
+      } else if (state.wordsByTarget.size > 0 || state.ratingsByTarget.size > 0) {
+        scheduleSnapshotPublish();
+      }
+      publishMyPresence();
+      return;
+    }
+
+    if (msg.sessionId && msg.sessionId !== state.sessionId) return;
 
     if (msg.type === "snapshot") {
       const changed = mergeSnapshot(msg);
@@ -979,16 +1199,19 @@
     if (msg.type === "word_add") {
       const tid = String(msg.targetId || "");
       const item = msg.item;
-      if (!tid || !item || !item.subId || !item.text) return;
+      if (!tid || !TARGET_MAP.has(tid) || !item || !item.subId || !item.text) return;
       if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
       const mp = state.wordsByTarget.get(tid);
       if (!mp.has(item.subId)) {
         mp.set(item.subId, item);
         saveSessionStore();
-        if (!isRetained && state.view === "detail" && state.activeTargetId === tid) {
-          playChime([587.33, 880], 0.1, "sine", 0.045);
+        if (!isRetained && state.role !== "participant" && state.view === "detail" && state.activeTargetId === tid) {
+          playChime([587.33, 880], 0.09, "sine", 0.04);
         }
-        renderPreservingFocus();
+        // On student phone, don't interrupt active typing when classmates submit words
+        if (state.role !== "participant" || state.phoneJustSubmittedTargetId === tid) {
+          renderPreservingFocus();
+        }
       }
       return;
     }
@@ -1020,68 +1243,58 @@
     if (msg.type === "rating_set") {
       const tid = String(msg.targetId || "");
       const rec = msg.record;
-      if (!tid || !rec || !rec.pid) return;
+      if (!tid || !TARGET_MAP.has(tid) || !rec || !rec.pid) return;
       if (!state.ratingsByTarget.has(tid)) state.ratingsByTarget.set(tid, new Map());
       state.ratingsByTarget.get(tid).set(rec.pid, rec);
       saveSessionStore();
-      renderPreservingFocus();
-      return;
-    }
-
-    if (msg.type === "presence") {
-      if (msg.pid && msg.nick) {
-        state.presence.set(msg.pid, {
-          pid: msg.pid,
-          memberUid: msg.memberUid || "",
-          nick: msg.nick,
-          photo: msg.photo || "",
-          ts: Date.now()
-        });
-        updateConnBadgeOnly();
-      }
-      return;
-    }
-
-    if (msg.type === "hello_request" && !isRetained) {
-      if (state.wordsByTarget.size > 0 || state.ratingsByTarget.size > 0) {
-        scheduleSnapshotPublish();
-      }
+      if (state.role !== "participant") renderPreservingFocus();
     }
   }
 
   function initTransports() {
+    // A. Same-Browser Instant Sync (BroadcastChannel + storage event)
     if (typeof BroadcastChannel !== "undefined") {
       try {
         state.bc = new BroadcastChannel(BC_NAME);
         state.bc.onmessage = (ev) => {
-          if (ev && ev.data) handleIncoming(ev.data.subtopic, ev.data.msg, false);
+          if (ev && ev.data) handleIncoming(ev.data.topicSuffix, ev.data.msg, false);
         };
       } catch (_) {}
     }
 
     window.addEventListener("storage", (ev) => {
-      if (ev.key === storageKeyForSession(state.sessionId)) {
+      if (ev.key === LS_MASTER_PTR && ev.newValue && state.role === "participant") {
+        try {
+          applyMasterPointerToPhone(JSON.parse(ev.newValue), false);
+        } catch (_) {}
+      } else if (ev.key === storageKeyForSession(state.sessionId)) {
         loadSessionStore(state.sessionId);
         renderPreservingFocus();
       }
     });
 
+    // B. Dual MQTT over WSS Brokers
     if (window.mqtt && typeof window.mqtt.connect === "function") {
       BROKERS.forEach((url) => {
         try {
           const cl = window.mqtt.connect(url, {
-            clientId: `kuchi_${cliId}_${Math.random().toString(36).slice(2, 6)}`,
+            clientId: `kuchi2_${cliId}_${Math.random().toString(36).slice(2, 6)}`,
             clean: true,
             connectTimeout: 7000,
-            reconnectPeriod: 3500
+            reconnectPeriod: 3000
           });
           cl.on("connect", () => {
             state.connectedCount += 1;
             try {
-              cl.subscribe(`${TOPIC_ROOT}/+/+`, { qos: 0 });
+              cl.subscribe(`${TOPIC_ROOT}/#`, { qos: 0 });
             } catch (_) {}
             publishMyPresence();
-            publishPacket("hello", { type: "hello_request" }, false);
+            if (state.role === "facilitator") {
+              broadcastMasterPointer(true);
+              scheduleSnapshotPublish();
+            } else {
+              publishPacket("global/hello", { type: "hello_request" }, false);
+            }
             updateConnBadgeOnly();
           });
           cl.on("close", () => {
@@ -1090,19 +1303,106 @@
           });
           cl.on("message", (topic, payloadBuf, packet) => {
             try {
-              const parts = String(topic || "").split("/");
-              const subtopic = parts[parts.length - 1] || "";
+              const suffix = String(topic || "").slice(TOPIC_ROOT.length + 1);
               const parsed = JSON.parse(payloadBuf.toString());
-              handleIncoming(subtopic, parsed, Boolean(packet && packet.retain));
+              handleIncoming(suffix, parsed, Boolean(packet && packet.retain));
             } catch (_) {}
           });
           state.mqttClients.push(cl);
         } catch (_) {}
       });
     }
+
+    // C. PeerJS WebRTC Direct Facilitator-to-Phones Mesh Backup
+    if (typeof window.Peer === "function") {
+      try {
+        if (state.role === "facilitator") {
+          const peer = new window.Peer(FAC_PEER_ID);
+          state.peer = peer;
+          peer.on("open", () => {
+            state.connectedCount += 1;
+            updateConnBadgeOnly();
+          });
+          peer.on("connection", (conn) => {
+            state.peerConns.set(conn.peer, conn);
+            conn.on("open", () => {
+              // Immediately sync newly connected phone to Facilitator's current slide!
+              conn.send({
+                topicSuffix: "master/pointer",
+                msg: {
+                  msgId: randId("m"),
+                  senderCli: cliId,
+                  type: "master_pointer",
+                  fromFacilitator: true,
+                  sessionId: state.sessionId,
+                  view: state.view,
+                  targetId: state.activeTargetId,
+                  detailTab: state.detailTab,
+                  hideWords: state.hideWordsUntilReveal,
+                  pointerSeq: state.pointerSeq,
+                  sentMs: Date.now()
+                }
+              });
+            });
+            conn.on("data", (env) => {
+              if (env && env.msg) {
+                handleIncoming(env.topicSuffix || "", env.msg, false);
+                // Relay student submission to all other PeerJS-connected phones
+                state.peerConns.forEach((other, pidKey) => {
+                  if (pidKey !== conn.peer && other && other.open) {
+                    try {
+                      other.send(env);
+                    } catch (_) {}
+                  }
+                });
+              }
+            });
+            conn.on("close", () => state.peerConns.delete(conn.peer));
+          });
+          peer.on("error", () => {});
+        } else if (state.role === "participant") {
+          const peer = new window.Peer();
+          state.peer = peer;
+          const connectToFac = () => {
+            if (!peer || peer.destroyed || (state.facPeerConn && state.facPeerConn.open)) return;
+            try {
+              const conn = peer.connect(FAC_PEER_ID, { reliable: true });
+              state.facPeerConn = conn;
+              conn.on("open", () => {
+                state.connectedCount += 1;
+                updateConnBadgeOnly();
+                publishMyPresence();
+                conn.send({
+                  topicSuffix: "global/hello",
+                  msg: { msgId: randId("m"), senderCli: cliId, type: "hello_request", sentMs: Date.now() }
+                });
+              });
+              conn.on("data", (env) => {
+                if (env && env.msg) handleIncoming(env.topicSuffix || "", env.msg, false);
+              });
+              conn.on("close", () => {
+                state.connectedCount = Math.max(0, state.connectedCount - 1);
+                updateConnBadgeOnly();
+              });
+            } catch (_) {}
+          };
+          peer.on("open", connectToFac);
+          peer.on("error", () => {});
+          setInterval(connectToFac, 8000);
+        }
+      } catch (_) {}
+    }
+
+    // D. Facilitator 3.5s Heartbeat + Participant Presence Heartbeat
+    if (state.role === "facilitator") {
+      setInterval(() => broadcastMasterPointer(true), 3500);
+    }
+    setInterval(() => {
+      if (state.myMemberUid || state.myGuestName) publishMyPresence();
+    }, 12000);
   }
 
-  /* ---------- 8. Viewport-Adaptive Word Cloud Spiral Engine ---------- */
+  /* ---------- 9. Viewport-Adaptive Word Cloud Spiral Engine ---------- */
   function getAggregatedWords(targetId) {
     const mp = state.wordsByTarget.get(targetId);
     if (!mp || mp.size === 0) return { items: [], uniqueRespondents: 0, totalSubmissions: 0 };
@@ -1141,6 +1441,14 @@
     };
   }
 
+  function getMySentWordsForTarget(targetId) {
+    const mp = state.wordsByTarget.get(targetId);
+    if (!mp) return [];
+    return Array.from(mp.values())
+      .filter((w) => w && w.pid === persistentPid)
+      .map((w) => w.text);
+  }
+
   function computeAdaptiveWordCloud(items) {
     if (!items.length) return [];
     const vw = window.innerWidth || 1280;
@@ -1148,21 +1456,21 @@
     const isPortrait = vw < vh;
     const isCompact = vw <= 640;
 
-    const W = isPortrait ? 680 : 1080;
-    const H = isPortrait ? 760 : 520;
+    const W = isPortrait ? 680 : 1120;
+    const H = isPortrait ? 760 : 540;
     const cx = W / 2;
     const cy = H / 2;
     const maxCount = Math.max(1, ...items.map((x) => x.count));
     const placed = [];
 
-    const baseMin = isCompact ? 18 : 24;
-    const baseRange = isCompact ? 28 : 48;
+    const baseMin = isCompact ? 18 : 26;
+    const baseRange = isCompact ? 28 : 52;
 
-    return items.slice(0, 46).map((item, idx) => {
-      const ratio = maxCount === 1 ? (idx === 0 ? 0.78 : 0.38) : (item.count - 1) / Math.max(1, maxCount - 1);
+    return items.slice(0, 48).map((item, idx) => {
+      const ratio = maxCount === 1 ? (idx === 0 ? 0.78 : 0.4) : (item.count - 1) / Math.max(1, maxCount - 1);
       let fontPx = Math.round(baseMin + ratio * baseRange);
       if (items.length > 22) fontPx = Math.round(fontPx * 0.86);
-      if (item.emojiOnly) fontPx = Math.round(fontPx * 1.3);
+      if (item.emojiOnly) fontPx = Math.round(fontPx * 1.32);
 
       const charUnit = item.emojiOnly ? fontPx * 1.15 : fontPx * 0.57;
       const boxW = Math.min(W * 0.84, Math.max(fontPx * 1.2, item.text.length * charUnit + 24));
@@ -1170,10 +1478,10 @@
 
       let bestX = cx;
       let bestY = cy;
-      const spreadX = isPortrait ? 0.96 : 1.46;
-      const spreadY = isPortrait ? 1.22 : 0.84;
+      const spreadX = isPortrait ? 0.96 : 1.48;
+      const spreadY = isPortrait ? 1.22 : 0.85;
 
-      for (let step = 0; step < 540; step += 1) {
+      for (let step = 0; step < 560; step += 1) {
         const angle = step * 0.41 + idx * 0.83;
         const radius = step * 3.0;
         const tx = cx + Math.cos(angle) * radius * spreadX;
@@ -1207,10 +1515,10 @@
     });
   }
 
-  /* ---------- 9. Submit Word & Submit Rating ---------- */
-  function submitWord(targetId, rawText) {
+  /* ---------- 10. Submit Word(s) & Rating ---------- */
+  function submitSingleWordPacket(targetId, rawText) {
     const cleaned = String(rawText || "").trim().replace(/\s+/g, " ").slice(0, 54);
-    if (!cleaned || !targetId) return false;
+    if (!cleaned || !targetId || !TARGET_MAP.has(targetId)) return false;
 
     const mem = MEMBER_MAP.get(state.myMemberUid);
     const entry = {
@@ -1224,9 +1532,17 @@
 
     if (!state.wordsByTarget.has(targetId)) state.wordsByTarget.set(targetId, new Map());
     state.wordsByTarget.get(targetId).set(entry.subId, entry);
-    saveSessionStore();
+    publishPacket(`${state.sessionId}/word_add`, { type: "word_add", targetId, item: entry }, false);
+    return true;
+  }
 
-    publishPacket("word_add", { type: "word_add", targetId, item: entry }, false);
+  function submitWordBatch(targetId, textsArray) {
+    let anySent = false;
+    (textsArray || []).forEach((t) => {
+      if (submitSingleWordPacket(targetId, t)) anySent = true;
+    });
+    if (!anySent) return false;
+    saveSessionStore();
     scheduleSnapshotPublish();
     playChime([659.25, 880], 0.09, "sine", 0.05);
     renderPreservingFocus();
@@ -1235,9 +1551,9 @@
 
   function submitRating(targetId, scoreVal, reasonText) {
     const score = Math.max(1, Math.min(5, Number(Number(scoreVal).toFixed(1))));
-    if (!targetId || !Number.isFinite(score)) return;
+    if (!targetId || !TARGET_MAP.has(targetId) || !Number.isFinite(score)) return;
     const mem = MEMBER_MAP.get(state.myMemberUid);
-    const isOwner = Boolean(mem && mem.uid === targetId) || !mem;
+    const isOwner = Boolean(mem && mem.uid === targetId) || (state.role === "facilitator" && !mem);
 
     const rec = {
       pid: persistentPid,
@@ -1253,7 +1569,7 @@
     state.ratingsByTarget.get(targetId).set(rec.pid, rec);
     saveSessionStore();
 
-    publishPacket("rating_set", { type: "rating_set", targetId, record: rec }, false);
+    publishPacket(`${state.sessionId}/rating_set`, { type: "rating_set", targetId, record: rec }, false);
     scheduleSnapshotPublish();
     playChime([523.25, 659.25, 783.99], 0.11, "triangle", 0.06);
     renderPreservingFocus();
@@ -1282,7 +1598,7 @@
     renderPreservingFocus();
   }
 
-  /* ---------- 10. Render Top Capsule + Overview + Zoomed Stage + Modals ---------- */
+  /* ---------- 11. Render Views (Facilitator Lobby, 21-Card Overview, Zoom Stage, Student Phone) ---------- */
   function renderUniversalNavClusterHtml(showOverviewBtn) {
     const mainHomeUrl = resolveMainPortalUrl();
     return `
@@ -1293,7 +1609,7 @@
         </button>
         ${
           showOverviewBtn
-            ? `<button type="button" class="tv-pill-btn is-nav-grid" data-act="go-overview" title="ซูมกลับหน้าภาพรวมกลุ่มกุฉินารายณ์ 22 คน">${NAV_ICONS.grid}<span>ภาพรวมกลุ่ม</span></button>`
+            ? `<button type="button" class="tv-pill-btn is-nav-grid" data-act="go-overview" title="ไปหน้าภาพรวมกลุ่มกุฉินารายณ์ 21 คน">${NAV_ICONS.grid}<span>ภาพรวม 21 คน</span></button>`
             : ""
         }
         <a class="tv-pill-btn is-nav-home" href="${esc(mainHomeUrl)}" title="กลับหน้าหลักใหญ่พอร์ทัลรายวิชา RACM 303">
@@ -1304,20 +1620,44 @@
     `;
   }
 
+  function renderIdentityGridCardsHtml() {
+    return `
+      <div class="id-picker-grid">
+        ${MEMBERS.map(
+          (m) => `
+            <button
+              type="button"
+              class="id-picker-card${state.myMemberUid === m.uid ? " is-selected" : ""}"
+              data-act="select-identity"
+              data-uid="${esc(m.uid)}"
+            >
+              <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
+              <strong>${esc(m.nickname)}</strong>
+              <span>${esc(m.kind === "student" ? `${m.firstName} · ${m.shortNo}` : "อาจารย์ที่ปรึกษา")}</span>
+            </button>
+          `
+        ).join("")}
+      </div>
+    `;
+  }
+
+  /* --- A. Top Bar for Facilitator & Explorer --- */
   function renderTopBarHtml() {
+    const isFac = state.role === "facilitator";
     const myMem = MEMBER_MAP.get(state.myMemberUid);
     const myLabel = myMem ? myMem.nickname : state.myGuestName || "เลือกชื่อ";
+    const onlineMembers = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
 
     return `
       <div class="tv-topbar-wrap">
         <header class="tv-topbar">
           <div class="tv-left-dock">
-            ${renderUniversalNavClusterHtml(state.view === "detail")}
-            <button type="button" class="tv-brand-btn" data-act="go-overview" title="หน้าภาพรวมครอบครัวกุฉินารายณ์ 22 คน">
-              <span class="tv-logo-badge">KG</span>
+            ${renderUniversalNavClusterHtml(state.view !== "overview")}
+            <button type="button" class="tv-brand-btn" data-act="go-overview" title="หน้าภาพรวมครอบครัวกุฉินารายณ์ 21 คน">
+              <span class="tv-logo-badge${isFac ? " is-fac" : ""}">${isFac ? "FAC" : "KG"}</span>
               <span class="tv-brand-titles">
-                <span class="tv-brand-main">Kuchi Gang 2569 · รพร.กุฉินารายณ์</span>
-                <span class="tv-brand-sub">กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน</span>
+                <span class="tv-brand-main">${isFac ? "Facilitator จอใหญ่ · Kuchi Gang 2569" : "Kuchi Gang 2569 · รพร.กุฉินารายณ์ (21 คน)"}</span>
+                <span class="tv-brand-sub">${isFac ? "บังคับซิงค์มือถือผู้เรียนทุกเครื่องตามจอใหญ่อัตโนมัติ (Mentimeter Mode)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
               </span>
             </button>
           </div>
@@ -1329,27 +1669,46 @@
                 .join("")}
             </select>
 
+            ${
+              isFac
+                ? `
+                  <button type="button" class="tv-pill-btn ${state.view === "lobby" ? "is-primary" : ""}" data-act="go-lobby" title="กลับไป Slide 1 หน้าสแกน QR Code เต็มจอ">
+                    📱 <span>Slide 1: QR (${onlineMembers.size}/21)</span>
+                  </button>
+                `
+                : `
+                  <a class="tv-pill-btn is-facilitator" href="${esc(getFacilitatorUrl())}" title="เปิดลิงก์ Facilitator สำหรับคุมจอใหญ่และบังคับมือถือวิ่งตามพร้อมกัน">
+                    🎛️ <span>โหมด Facilitator (จอใหญ่)</span>
+                  </a>
+                `
+            }
+
             <button type="button" class="tv-pill-btn is-roulette" data-act="spin-roulette" title="สุ่มการ์ดแนะนำตัวแบบ Apple TV (คีย์ลัด R)">
               🎲 <span>สุ่มคนถัดไป</span>
             </button>
 
-            <button type="button" class="tv-pill-btn ${state.followHost ? "is-active" : ""} hide-mobile" data-act="toggle-follow" title="ซิงค์ซูมเข้า-ออกตามจอหน้าห้องอัตโนมัติ">
-              ${state.followHost ? "🔄 ซิงค์ตามจอหลัก: เปิด" : "🔄 ซิงค์จอหลัก"}
-            </button>
-
-            <button type="button" class="tv-pill-btn" data-act="open-identity" title="ตั้งชื่อผู้ส่งคำสะท้อน">
-              👤 <span>${esc(myLabel)}</span>
-            </button>
-
-            <button type="button" class="tv-pill-btn is-primary" data-act="open-qr" title="แสดง QR Code ให้เพื่อนสแกนเข้าห้องสด (คีย์ลัด Q)">
-              📱 <span>QR</span>
-            </button>
+            ${
+              !isFac
+                ? `
+                  <button type="button" class="tv-pill-btn" data-act="open-identity" title="เลือกชื่อของคุณในกลุ่มกุฉินารายณ์">
+                    👤 <span>${esc(myLabel)}</span>
+                  </button>
+                  <button type="button" class="tv-pill-btn is-primary" data-act="open-qr" title="แสดง QR Code เข้าโหมดมือถือ Full Type-Answer">
+                    📱 <span>QR มือถือ</span>
+                  </button>
+                `
+                : `
+                  <button type="button" class="tv-pill-btn" data-act="open-qr" title="แสดงป๊อปอัป QR Code สำหรับคนมาทีหลัง">
+                    📱 <span>QR ด่วน</span>
+                  </button>
+                `
+            }
 
             <button type="button" class="tv-pill-btn hide-mobile" data-act="open-roadmap" title="แผนการเดินทางรถไฟ 10–19 ธ.ค. & 5 วัตถุประสงค์">
               🗺️ <span>ภารกิจ</span>
             </button>
 
-            <button type="button" class="tv-pill-btn hide-mobile" data-act="print-overview" title="พิมพ์สมุดที่ระลึก / บันทึกเป็น PDF">
+            <button type="button" class="tv-pill-btn hide-mobile" data-act="print-overview" title="พิมพ์สมุดที่ระลึก 21 คน / บันทึกเป็น PDF">
               🖨️ <span>PDF</span>
             </button>
 
@@ -1359,7 +1718,7 @@
 
             <span class="tv-live-chip ${state.connectedCount > 0 ? "" : "is-offline"}" id="tvConnBadge" data-act="open-qr">
               <span class="tv-live-dot"></span>
-              <span>${state.connectedCount > 0 ? `Live` : `Local`}</span>
+              <span>${state.connectedCount > 0 ? "Live Sync" : "Local"}</span>
             </span>
           </div>
         </header>
@@ -1367,6 +1726,92 @@
     `;
   }
 
+  /* --- B. Slide 1: Facilitator Giant QR Lobby + 21-Member Live Check-In Wall --- */
+  function renderFacilitatorLobbyHtml() {
+    const joinUrl = getJoinUrl();
+    const onlineUidSet = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
+    const guestCount = Array.from(state.presence.values()).filter((p) => !p.memberUid && p.nick).length;
+
+    return `
+      <main class="fac-lobby-outer">
+        <section class="fac-lobby-card" aria-label="Slide 1 สแกน QR Code เข้าห้องสด">
+          <div class="menti-decor" aria-hidden="true">
+            <div class="menti-shape-blue-para"></div>
+            <div class="menti-shape-pink-circle"></div>
+            <div class="menti-shape-mint-arc"></div>
+            <div class="menti-shape-purple-tri"></div>
+          </div>
+
+          <div class="fac-qr-pane">
+            <span class="fac-slide1-kicker">📱 SLIDE 1 · SCAN TO JOIN</span>
+            <div class="fac-qr-giant">
+              ${buildQrSvg(joinUrl)}
+            </div>
+            <div style="font-size:14px;font-weight:800;color:#0f172a">สแกนด้วยกล้องมือถือ / iPad เพื่อเข้าโหมดพิมพ์คำตอบเต็มจอ</div>
+            <div class="fac-url-pill">
+              <span style="flex:1">${esc(joinUrl)}</span>
+              <button type="button" class="tv-pill-btn" style="height:28px;font-size:11.5px;padding:0 10px" data-act="copy-url">คัดลอก</button>
+            </div>
+          </div>
+
+          <div class="fac-checkin-pane">
+            <div>
+              <h1 class="fac-lobby-title">ครอบครัวกุฉินารายณ์ · Kuchi Gang 2569 🚂</h1>
+              <p class="fac-lobby-sub">
+                เมื่อทุกคนสแกน QR Code แล้ว มือถือทุกเครื่องจะเข้าสู่โหมด <strong>Full Type-Answer เต็มตัว</strong> และ<strong>เปลี่ยนโจทย์ตามหน้าจอใหญ่นี้พร้อมกันอัตโนมัติ</strong> เพื่อดูผล Word Cloud ร่วมกันบนจอหลัก!
+              </p>
+            </div>
+
+            <div class="fac-steps-row">
+              <span class="fac-step-chip"><span class="fac-step-num">1</span> สแกน QR ด้านซ้าย</span>
+              <span class="fac-step-chip"><span class="fac-step-num">2</span> แตะรูปชื่อตัวเอง (21 คน)</span>
+              <span class="fac-step-chip"><span class="fac-step-num">3</span> พิมพ์คำตอบบนมือถือ &amp; ดูผลพร้อมกันบนจอใหญ่</span>
+            </div>
+
+            <div class="fac-checkin-header">
+              <span class="fac-checkin-counter">
+                🟢 เช็คอินเข้าห้องแล้ว ${onlineUidSet.size} / ${MEMBERS.length} คน${guestCount > 0 ? ` (+ผู้ร่วมฟัง ${guestCount})` : ""}
+              </span>
+              <span style="font-size:12.5px;color:#64748b;font-weight:600">คลิกที่รูปใครก็ได้เพื่อเริ่มถามคนนั้นทันที หรือกดปุ่มด้านล่าง</span>
+            </div>
+
+            <div class="fac-checkin-grid">
+              ${MEMBERS.map((m) => {
+                const isOn = onlineUidSet.has(m.uid);
+                return `
+                  <button
+                    type="button"
+                    class="fac-checkin-item${isOn ? " is-online" : ""}"
+                    data-act="zoom-in-target"
+                    data-target-id="${esc(m.uid)}"
+                    title="${esc(m.fullName)} — คลิกเพื่อเปิดโจทย์ของ ${esc(m.nickname)}"
+                  >
+                    ${isOn ? `<span class="fac-ci-tick">✓</span>` : ""}
+                    <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="eager" />
+                    <span class="fac-ci-nick">${esc(m.nickname)}</span>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+
+            <div class="fac-cta-row">
+              <button type="button" class="tv-pill-btn is-primary fac-cta-big" data-act="go-overview">
+                ⊞ เปิดภาพรวมทั้ง 21 คน (เริ่มกิจกรรม →)
+              </button>
+              <button type="button" class="tv-pill-btn fac-cta-big" style="border-color:#93c5fd;background:#eff6ff;color:#1d4ed8" data-act="zoom-in-target" data-target-id="m_smart">
+                ▶️ เริ่มโจทย์คนแรก: พี่สมาร์ท
+              </button>
+              <button type="button" class="tv-pill-btn is-roulette fac-cta-big" data-act="spin-roulette">
+                🎲 สุ่มคนแรกทันที
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+  }
+
+  /* --- C. 21-Card Apple TV Overview Grid (7 x 3 on PC 16:9) --- */
   function renderOverviewHtml() {
     const onlineUids = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
     const totalWordsAll = Array.from(state.wordsByTarget.values()).reduce((sum, mp) => sum + mp.size, 0);
@@ -1376,17 +1821,33 @@
       <main class="tv-overview-stage${state.overviewReturningFromId ? " is-zooming-back" : ""}">
         <div class="tv-overview-banner">
           <div class="tv-overview-headline">
-            <h1>ภาพรวมครอบครัวกุฉินารายณ์ 2569 (22 คน)</h1>
-            <span class="tv-overview-hint">แตะการ์ดคนไหนก็ได้เพื่อ <strong>Zoom In</strong> เข้าสู่โจทย์ใหญ่สะท้อนตัวตน · กด <strong>Esc</strong> เพื่อซูมออก</span>
+            <h1>ภาพรวมครอบครัวกุฉินารายณ์ 2569 (${MEMBERS.length} คน)</h1>
+            <span class="tv-overview-hint">
+              ${
+                state.role === "facilitator"
+                  ? "แตะการ์ดคนไหน มือถือทั้งห้องจะเด้งเข้าโหมดพิมพ์คำตอบของคนนั้นพร้อมกันทันที! · กด <strong>Esc</strong> เพื่อซูมออก"
+                  : "แตะการ์ดเพื่อ <strong>Zoom In</strong> เข้าสู่โจทย์ใหญ่สะท้อนตัวตน · กด <strong>Esc</strong> เพื่อซูมออก"
+              }
+            </span>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="font-size:13px;font-weight:700;color:#2563eb;background:#eff6ff;padding:4px 12px;border-radius:999px;border:1px solid #bfdbfe">
-              ☁️ คำสะท้อนรวม ${totalWordsAll} คำ
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button
+              type="button"
+              class="tv-pill-btn"
+              style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8"
+              data-act="zoom-in-target"
+              data-target-id="${TOPIC_TRIP_ID}"
+              data-tile-id="${TOPIC_TRIP_ID}"
+            >
+              🚂 โจทย์ความคาดหวังทริปกุฉินารายณ์${topicAgg.totalSubmissions > 0 ? ` (${topicAgg.totalSubmissions})` : ""}
+            </button>
+            <span style="font-size:13px;font-weight:700;color:#2563eb;background:#ffffff;padding:5px 12px;border-radius:999px;border:1px solid #bfdbfe">
+              ☁️ รวม ${totalWordsAll} คำ
             </span>
           </div>
         </div>
 
-        <section class="tv-grid" id="tvOverviewGrid" aria-label="การ์ดสมาชิกกลุ่มกุฉินารายณ์ทั้ง 22 คน">
+        <section class="tv-grid" id="tvOverviewGrid" aria-label="การ์ดสมาชิกกลุ่มกุฉินารายณ์ทั้ง 21 คน">
           ${MEMBERS.map((m, idx) => {
             const agg = getAggregatedWords(m.uid);
             const rMap = state.ratingsByTarget.get(m.uid) || new Map();
@@ -1395,11 +1856,8 @@
               .slice(0, 4)
               .map((w) => `${w.text}${w.count > 1 ? ` ×${w.count}` : ""}`)
               .join(" · ");
-            const badgeNum = m.kind === "student" ? `#${m.studentNo}` : m.kind === "advisor" ? "AJ" : "STAFF";
-            const subInfo =
-              m.kind === "student"
-                ? `${m.firstName} · ${m.shortNo} (D${m.disc})`
-                : `${m.firstName} · ${m.kind === "advisor" ? "อาจารย์ที่ปรึกษา" : "พี่ประสานงาน"}`;
+            const badgeNum = m.kind === "student" ? `#${m.studentNo}` : "AJ";
+            const subInfo = m.kind === "student" ? `${m.firstName} · ${m.shortNo} (D${m.disc})` : `${m.firstName} · อาจารย์ที่ปรึกษา`;
             const isOnline = onlineUids.has(m.uid);
             const isReturned = state.overviewReturningFromId === m.uid;
             const isDpad = state.dpadIndex === idx;
@@ -1413,81 +1871,38 @@
                 data-act="zoom-in-target"
                 data-target-id="${esc(m.uid)}"
               >
-                <div class="tv-tile-avatar-wrap">
-                  <img src="${esc(m.photo)}" alt="${esc(m.fullName)}" loading="eager" />
-                  <span class="tv-tile-num-pill">${esc(badgeNum)}</span>
-                  ${isOnline ? `<span class="tv-tile-online-dot" title="ออนไลน์"></span>` : ""}
+                <div class="tv-tile-head">
+                  <div class="tv-tile-avatar-wrap">
+                    <img src="${esc(m.photo)}" alt="${esc(m.fullName)}" loading="eager" />
+                    <span class="tv-tile-num-pill">${esc(badgeNum)}</span>
+                    ${isOnline ? `<span class="tv-tile-online-dot" title="เช็คอินออนไลน์แล้ว"></span>` : ""}
+                  </div>
+                  <div class="tv-tile-idbox">
+                    <div class="tv-tile-toprow">
+                      <span class="tv-tile-nick">${esc(m.nickname)}</span>
+                      ${
+                        agg.totalSubmissions > 0
+                          ? `<span class="tv-tile-count-badge">☁️${agg.totalSubmissions}${ownerRec ? `·★${Number(ownerRec.score).toFixed(1)}` : ""}</span>`
+                          : ""
+                      }
+                    </div>
+                    <div class="tv-tile-sub">${esc(subInfo)}</div>
+                  </div>
                 </div>
-                <div class="tv-tile-body">
-                  <div class="tv-tile-toprow">
-                    <span class="tv-tile-nick">${esc(m.nickname)}</span>
-                    ${
-                      agg.totalSubmissions > 0
-                        ? `<span class="tv-tile-count-badge">☁️ ${agg.totalSubmissions}${ownerRec ? ` · ★${Number(ownerRec.score).toFixed(1)}` : ""}</span>`
-                        : ""
-                    }
-                  </div>
-                  <div class="tv-tile-sub">${esc(subInfo)}</div>
-                  <div class="tv-tile-words${topPreview ? "" : " is-empty"}">
-                    ${topPreview ? esc(topPreview) : "แตะเพื่อซูมถามโจทย์ ↗"}
-                  </div>
+                <div class="tv-tile-words${topPreview ? "" : " is-empty"}">
+                  ${topPreview ? esc(topPreview) : "แตะเพื่อซูมถามโจทย์ ↗"}
                 </div>
               </button>
             `;
           }).join("")}
-
-          <!-- Tile 23: Group Expectations Word Cloud -->
-          <button
-            type="button"
-            class="tv-tile is-special-topic${state.overviewReturningFromId === TOPIC_TRIP_ID ? " is-just-returned" : ""}${state.dpadIndex === 22 ? " is-dpad-focus" : ""}"
-            data-tile-id="${TOPIC_TRIP_ID}"
-            data-grid-idx="22"
-            data-act="zoom-in-target"
-            data-target-id="${TOPIC_TRIP_ID}"
-          >
-            <div class="tv-tile-avatar-wrap" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:28px">
-              🚂
-            </div>
-            <div class="tv-tile-body">
-              <div class="tv-tile-toprow">
-                <span class="tv-tile-nick">ทริปกุฉินารายณ์</span>
-                ${topicAgg.totalSubmissions > 0 ? `<span class="tv-tile-count-badge">☁️ ${topicAgg.totalSubmissions}</span>` : ""}
-              </div>
-              <div class="tv-tile-sub">ความคาดหวัง &amp; ภาพจำแรก</div>
-              <div class="tv-tile-words${topicAgg.items.length ? "" : " is-empty"}">
-                ${
-                  topicAgg.items.length
-                    ? esc(topicAgg.items.slice(0, 3).map((w) => w.text).join(" · "))
-                    : "แตะส่งความคาดหวังทริป ↗"
-                }
-              </div>
-            </div>
-          </button>
-
-          <!-- Tile 24: Instant QR Scan & Instructions -->
-          <button
-            type="button"
-            class="tv-tile is-special-qr${state.dpadIndex === 23 ? " is-dpad-focus" : ""}"
-            data-grid-idx="23"
-            data-act="open-qr"
-          >
-            <div class="tv-tile-avatar-wrap" style="background:#fff;padding:4px">
-              ${buildQrSvg(getJoinUrl())}
-            </div>
-            <div class="tv-tile-body">
-              <div class="tv-tile-toprow">
-                <span class="tv-tile-nick">QR เข้าห้องสด</span>
-              </div>
-              <div class="tv-tile-sub">สแกนส่งคำจากมือถือ/iPad</div>
-              <div class="tv-tile-words" style="color:#93c5fd">แตะขยาย QR เต็มจอ ↗</div>
-            </div>
-          </button>
         </section>
       </main>
     `;
   }
 
+  /* --- D. Zoomed-In Big Question Result Stage --- */
   function renderZoomedDetailHtml() {
+    const isFac = state.role === "facilitator";
     const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
     const m = tObj.member;
     const agg = getAggregatedWords(tObj.id);
@@ -1530,7 +1945,7 @@
             </div>
 
             <div class="zm-nav-group">
-              <button type="button" class="tv-pill-btn" data-act="toggle-hide-words">${state.hideWordsUntilReveal ? "👁️ เฉลยคำ" : "🙈 ซ่อนรอเฉลย"}</button>
+              <button type="button" class="tv-pill-btn" data-act="toggle-hide-words">${state.hideWordsUntilReveal ? "👁️ เปิดเฉลยพร้อมกัน!" : "🙈 ซ่อนรอเฉลย"}</button>
               <button type="button" class="tv-pill-btn" data-act="prev-person" title="คนก่อนหน้า">◀</button>
               <button type="button" class="tv-pill-btn is-roulette" data-act="spin-roulette">🎲 สุ่มคนถัดไป</button>
               <button type="button" class="tv-pill-btn" data-act="next-person" title="คนถัดไป">▶</button>
@@ -1574,7 +1989,7 @@
                     ${
                       agg.items.length
                         ? agg.items
-                            .slice(0, 12)
+                            .slice(0, 14)
                             .map(
                               (w, i) =>
                                 `<span style="padding:4px 11px;border-radius:999px;background:#eff6ff;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[i % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
@@ -1590,12 +2005,12 @@
                       <div style="display:flex;gap:8px;flex-wrap:wrap">
                         ${
                           ownerRec
-                            ? `<span style="padding:5px 13px;border-radius:999px;background:#fef3c7;border:1.5px solid #f59e0b;color:#92400e;font-weight:800;font-size:14px">★ คะแนนล่าสุด: ${Number(ownerRec.score).toFixed(1)} / 5.0</span>`
+                            ? `<span style="padding:5px 13px;border-radius:999px;background:#fef3c7;border:1.5px solid #f59e0b;color:#92400e;font-weight:800;font-size:14px">★ คะแนนเจ้าของชื่อ: ${Number(ownerRec.score).toFixed(1)} / 5.0</span>`
                             : ""
                         }
                         ${
-                          ratings.length > 1
-                            ? `<span style="padding:5px 13px;border-radius:999px;background:#eff6ff;border:1.5px solid #3b82f6;color:#1e40af;font-weight:800;font-size:14px">👥 เฉลี่ย ${avg.toFixed(2)} (${ratings.length} คน)</span>`
+                          ratings.length > 0
+                            ? `<span style="padding:5px 13px;border-radius:999px;background:#eff6ff;border:1.5px solid #3b82f6;color:#1e40af;font-weight:800;font-size:14px">👥 เฉลี่ยทั้งห้อง ${avg.toFixed(2)} (${ratings.length} คน)</span>`
                             : ""
                         }
                       </div>
@@ -1612,7 +2027,24 @@
                       <span>5 · Strongly agree</span>
                     </div>
 
-                    <div style="display:flex;gap:8px;justify-content:center;margin-top:18px;flex-wrap:wrap">
+                    ${
+                      ratings.some((r) => r.reason)
+                        ? `
+                          <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px">
+                            ${ratings
+                              .filter((r) => r.reason)
+                              .slice(-8)
+                              .map(
+                                (r) =>
+                                  `<div style="padding:6px 12px;border-radius:12px;background:#ffffff;border:1px solid #e2e8f0;font-size:13px"><strong>${esc(r.nick)} (${Number(r.score).toFixed(1)}):</strong> ${esc(r.reason)}</div>`
+                              )
+                              .join("")}
+                          </div>
+                        `
+                        : ""
+                    }
+
+                    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap">
                       ${[1, 2, 3, 3.5, 4, 4.5, 5]
                         .map(
                           (sc) =>
@@ -1629,9 +2061,9 @@
                     state.hideWordsUntilReveal
                       ? `
                         <div class="zm-empty-prompt">
-                          <strong>🙈 ซ่อนคำสะท้อนไว้ชั่วคราว (${agg.totalSubmissions} คำ จาก ${agg.uniqueRespondents} คน)</strong>
-                          <p>เมื่อทุกคนส่งคำครบแล้ว กดปุ่มด้านล่างเพื่อเปิดเฉลย Word Cloud พร้อมกัน!</p>
-                          <button type="button" class="tv-pill-btn is-primary" style="height:42px;padding:0 20px;font-size:15px" data-act="toggle-hide-words">✨ เปิดเฉลย Word Cloud!</button>
+                          <strong>🙈 ซ่อนคำสะท้อนไว้รอเฉลยพร้อมกัน (${agg.totalSubmissions} คำ · จาก ${agg.uniqueRespondents} คน)</strong>
+                          <p>ผู้เรียนกำลังพิมพ์ส่งคำจากมือถือ... เมื่อพร้อมแล้วกดปุ่มด้านล่างเพื่อเปิด Word Cloud บนจอใหญ่!</p>
+                          <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">✨ เปิดเฉลย Word Cloud พร้อมกัน!</button>
                         </div>
                       `
                       : positioned.length
@@ -1654,8 +2086,8 @@
                       `
                       : `
                         <div class="zm-empty-prompt">
-                          <strong>💬 ส่งคำหรือประโยคสะท้อนตัวตนของ '${esc(tObj.shortTitle)}' กันเลย!</strong>
-                          <p>พิมพ์จากช่องด้านล่างได้ทันทีทั้งบนมือถือ แท็บเล็ต และคอมพิวเตอร์ หรือกดปุ่ม 📱 QR เพื่อให้เพื่อนทั้งห้องสแกนร่วมส่งสด</p>
+                          <strong>💬 รอรับคำสะท้อนตัวตนของ '${esc(tObj.shortTitle)}' แบบเรียลไทม์!</strong>
+                          <p>${isFac ? "ขณะนี้มือถือทุกเครื่องที่สแกน QR เด้งเข้าช่องพิมพ์คำตอบของคนนี้แล้ว — คำที่ส่งจะลอยขึ้นมาบนจอใหญ่นี้ทันที!" : "พิมพ์คำหรือประโยคสั้นๆ จากช่องด้านล่าง หรือกดปุ่ม 📱 QR เพื่อให้เพื่อนสแกนร่วมส่งสด"}</p>
                           <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
                             <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
                             ${
@@ -1669,23 +2101,44 @@
                   }
                 </div>
 
-                <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
-                  <div class="zm-composer-row">
-                    <input
-                      type="text"
-                      id="zmWordInput"
-                      name="word"
-                      class="zm-word-input"
-                      autocomplete="off"
-                      placeholder="พิมพ์คำ หรือประโยคสั้นๆ ที่สะท้อน '${esc(tObj.shortTitle)}'..."
-                      maxlength="54"
-                    />
-                    <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
-                  </div>
-                  <div class="zm-emoji-bar">
-                    ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
-                  </div>
-                </form>
+                ${
+                  isFac && !state.showComposerOnStage
+                    ? `
+                      <div class="zm-fac-footer">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                          <button type="button" class="tv-pill-btn" data-act="open-qr">📱 QR สำหรับคนเข้าเพิ่ม</button>
+                          <span style="font-size:13px;font-weight:700;color:#059669">📡 มือถือทุกเครื่องซิงค์อยู่ที่โจทย์นี้</span>
+                        </div>
+                        <div class="zm-fac-stat-pill">
+                          💬 ส่งเข้ามาแล้ว ${agg.totalSubmissions} คำ · จากผู้ตอบ ${agg.uniqueRespondents} คน
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                          <button type="button" class="tv-pill-btn" data-act="toggle-stage-composer">⌨️ พิมพ์เสริมจากจอนี้</button>
+                          ${m ? `<button type="button" class="tv-pill-btn" data-act="set-detail-tab" data-tab="rating">⭐ ไปหน้าโหวต 1–5 →</button>` : ""}
+                        </div>
+                      </div>
+                    `
+                    : `
+                      <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
+                        <div class="zm-composer-row">
+                          <input
+                            type="text"
+                            id="zmWordInput"
+                            name="word"
+                            class="zm-word-input"
+                            autocomplete="off"
+                            placeholder="พิมพ์คำ หรือประโยคสั้นๆ ที่สะท้อน '${esc(tObj.shortTitle)}'..."
+                            maxlength="54"
+                          />
+                          <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
+                          ${isFac ? `<button type="button" class="tv-pill-btn" data-act="toggle-stage-composer" title="ซ่อนแถบพิมพ์เพื่อให้เห็นผลเต็มจอ">ซ่อนช่องพิมพ์</button>` : ""}
+                        </div>
+                        <div class="zm-emoji-bar">
+                          ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
+                        </div>
+                      </form>
+                    `
+                }
               `
           }
         </section>
@@ -1693,6 +2146,352 @@
     `;
   }
 
+  /* --- E. Full-Screen Student Type-Answer Phone Controller (join.html / #join) --- */
+  function renderParticipantPhoneHtml() {
+    const myMem = MEMBER_MAP.get(state.myMemberUid);
+    const hasIdentity = Boolean(myMem || state.myGuestName);
+    const myDisplayName = myMem ? myMem.nickname : state.myGuestName || "เลือกชื่อ";
+
+    const topBar = `
+      <div class="tv-topbar-wrap">
+        <header class="tv-topbar">
+          <div class="tv-left-dock">
+            ${renderUniversalNavClusterHtml(false)}
+          </div>
+          <div class="tv-actions">
+            ${
+              hasIdentity
+                ? `
+                  <button type="button" class="tv-pill-btn" data-act="phone-pick-name" title="แตะเพื่อเปลี่ยนชื่อผู้ตอบ">
+                    👤 <span>${esc(myDisplayName)}</span>
+                  </button>
+                `
+                : ""
+            }
+            <span class="tv-live-chip ${state.connectedCount > 0 ? "" : "is-offline"}" id="tvConnBadge">
+              <span class="tv-live-dot"></span>
+              <span>${state.connectedCount > 0 ? "ซิงค์จอใหญ่" : "กำลังเชื่อม..."}</span>
+            </span>
+          </div>
+        </header>
+      </div>
+    `;
+
+    // Step 1: Pick Identity from 21 Kuchi Gang Members (100% Clickable!)
+    if (!hasIdentity || state.phonePickingIdentity) {
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div>
+                  <h1 style="margin:0 0 4px;font-size:21px;font-weight:800;color:#0f172a">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h1>
+                  <p style="margin:0;font-size:13.5px;color:#64748b">แตะรูปตัวเองครั้งเดียว เพื่อเช็คอินขึ้นจอใหญ่และเข้าสู่โหมดพิมพ์คำตอบเต็มตัว (21 คน)</p>
+                </div>
+                ${
+                  hasIdentity
+                    ? `<button type="button" class="tv-pill-btn" data-act="phone-cancel-pick">✕ ปิด</button>`
+                    : ""
+                }
+              </div>
+
+              ${renderIdentityGridCardsHtml()}
+
+              <form data-form="guest-identity" style="display:flex;gap:8px;padding-top:10px;border-top:1px solid #e2e8f0">
+                <input
+                  type="text"
+                  name="guestName"
+                  class="ph-answer-input"
+                  style="height:40px;font-size:15px"
+                  placeholder="หรือพิมพ์ชื่อเล่น (กรณีอาจารย์/แขกร่วมกิจกรรม)..."
+                  maxlength="24"
+                  value="${esc(state.myGuestName)}"
+                />
+                <button type="submit" class="tv-pill-btn is-primary" style="height:40px;padding:0 16px">ตกลง</button>
+              </form>
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // Step 2: Standby View when Facilitator is on Slide 1 (QR Lobby) or 21-Card Overview
+    if (state.view !== "detail" && !state.phoneManualOverride) {
+      const stageLabel =
+        state.view === "lobby"
+          ? "📱 จอใหญ่กำลังเปิด Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน"
+          : "⊞ จอใหญ่กำลังอยู่ที่หน้าภาพรวม 21 คน (กำลังสุ่ม/เลือกคนถัดไป...)";
+
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner">
+                <span>📡 เชื่อมต่อจอใหญ่สำเร็จ · บังคับเปลี่ยนข้อตาม Facilitator อัตโนมัติ</span>
+              </div>
+
+              <div class="ph-standby-box">
+                <div class="ph-pulse-ring">
+                  ${
+                    myMem
+                      ? `<img src="${esc(myMem.photo)}" alt="${esc(myMem.nickname)}" />`
+                      : `<div style="width:100%;height:100%;border-radius:50%;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-size:28px">👋</div>`
+                  }
+                </div>
+                <h2 style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0f172a">สวัสดี ${esc(myDisplayName)}! เช็คอินเรียบร้อย ✅</h2>
+                <div style="padding:6px 14px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:13px;font-weight:700">
+                  ${stageLabel}
+                </div>
+                <p style="margin:2px 0 0;font-size:14.5px;color:#475569;line-height:1.5;max-width:440px">
+                  👀 <strong>เงยหน้าดูจอใหญ่พร้อมกัน</strong> — ทันทีที่อาจารย์เปิดโจทย์ของเพื่อนคนถัดไป หน้าจอมือถือนี้จะเปลี่ยนเป็นช่องพิมพ์คำตอบเต็มจอให้อัตโนมัติทันที!
+                </p>
+              </div>
+
+              ${
+                !state.hasSeenFacilitator
+                  ? `
+                    <div style="border-top:1px dashed #e2e8f0;padding-top:12px;text-align:center">
+                      <button type="button" class="tv-pill-btn" data-act="phone-enable-manual">
+                        เลือกคนเพื่อส่งคำล่วงหน้าด้วยตัวเอง (กรณีไม่ได้อยู่ในห้องสด)
+                      </button>
+                    </div>
+                  `
+                  : ""
+              }
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // Optional Manual Picker if outside live session and user explicitly requested it
+    if (state.phoneManualOverride && state.view !== "detail") {
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <strong style="font-size:17px">แตะเลือกสมาชิกที่ต้องการส่งคำสะท้อน</strong>
+                <button type="button" class="tv-pill-btn" data-act="phone-disable-manual">กลับโหมดรอจอใหญ่</button>
+              </div>
+              <div class="id-picker-grid">
+                ${MEMBERS.map(
+                  (m) => `
+                    <button type="button" class="id-picker-card" data-act="phone-manual-target" data-target-id="${esc(m.uid)}">
+                      <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" loading="lazy" />
+                      <strong>${esc(m.nickname)}</strong>
+                      <span>${esc(m.firstName)}</span>
+                    </button>
+                  `
+                ).join("")}
+              </div>
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // Step 3: Active Question on Phone (Full Type-Answer Mode OR Full 1-5 Rating Mode)
+    const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
+    const m = tObj.member;
+    const mySentWords = getMySentWordsForTarget(tObj.id);
+    const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
+    const myPrevRating = rMap.get(persistentPid);
+
+    const bigQuestionHtml = m
+      ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
+      : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
+
+    // 3B. Rating Scale 1–5 Controller on Phone
+    if (state.detailTab === "rating" && m) {
+      const currentVal = myPrevRating ? Number(myPrevRating.score) : state.phoneDraftRating;
+      const isSelf = state.myMemberUid === m.uid;
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner">
+                <span>⭐ โหมดให้คะแนน 1–5 · ดูผลกราฟสดบนจอใหญ่</span>
+                ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+              </div>
+
+              <div class="ph-person-banner">
+                <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
+                <div>
+                  <div style="font-size:12px;font-weight:800;color:#2563eb">${esc(isSelf ? "🌟 การ์ดของคุณเอง!" : `KUCHI GANG · ${m.nickname}`)}</div>
+                  <div style="font-size:18px;font-weight:800;color:#0f172a">${esc(m.mentiName)}</div>
+                  <div style="font-size:12.5px;color:#64748b">${esc(m.fullName)}</div>
+                </div>
+              </div>
+
+              <h1 class="ph-big-question" style="font-size:18px">
+                คิดว่าภาพรวม Word Cloud บนจอใหญ่สะท้อนตัวตนจริงของ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ได้ตรงแค่ไหน?
+              </h1>
+
+              <form data-form="phone-send-rating" data-target-id="${esc(m.uid)}" style="display:flex;flex-direction:column;gap:14px">
+                <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:18px;padding:16px;text-align:center">
+                  <div id="phRatingReadout" style="font-size:34px;font-weight:900;color:#2563eb;line-height:1">${currentVal.toFixed(1)} <span style="font-size:16px;color:#64748b">/ 5.0</span></div>
+                  <input
+                    type="range"
+                    id="phRatingSlider"
+                    name="score"
+                    min="1"
+                    max="5"
+                    step="0.5"
+                    value="${currentVal}"
+                    style="width:100%;margin:14px 0 8px;accent-color:#2563eb;height:28px;cursor:pointer"
+                  />
+                  <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b">
+                    <span>1 · ไม่ตรงเลย</span>
+                    <span>3 · ปานกลาง</span>
+                    <span>5 · ตรงที่สุด!</span>
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  id="phReasonInput"
+                  name="reason"
+                  class="ph-answer-input"
+                  placeholder="เหตุผลสั้นๆ เพิ่มเติม (ไม่บังคับ)..."
+                  maxlength="120"
+                  value="${esc(myPrevRating ? myPrevRating.reason || "" : "")}"
+                />
+
+                <button type="submit" class="ph-submit-btn">
+                  ${myPrevRating ? "🔄 อัปเดตคะแนนขึ้นจอใหญ่" : "⭐ ส่งคะแนนขึ้นจอใหญ่!"}
+                </button>
+              </form>
+            </section>
+          </main>
+        `
+      );
+    }
+
+    // 3A. Full Type-Answer Controller on Phone (Default for Word Cloud)
+    const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
+
+    return (
+      topBar +
+      `
+        <main class="ph-shell">
+          <section class="ph-card">
+            <div class="ph-sync-banner">
+              <span>✍️ Full Type-Answer · ส่งคำตอบเพื่อดูผลบนจอใหญ่พร้อมกัน</span>
+              ${state.phoneManualOverride ? `<button type="button" class="tv-pill-btn" style="height:26px;font-size:11.5px" data-act="phone-manual-back-list">เปลี่ยนคน</button>` : ""}
+            </div>
+
+            <div class="ph-person-banner">
+              ${
+                m
+                  ? `<img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />`
+                  : `<div style="width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0">🚂</div>`
+              }
+              <div style="min-width:0">
+                <div style="font-size:11.5px;font-weight:800;color:#2563eb">
+                  ${esc(m ? (m.kind === "student" ? `KUCHI GANG #${m.studentNo}/20 · DISC ${m.disc}` : m.roleBadge) : "10–19 ธ.ค. 2569 · จ.กาฬสินธุ์")}
+                </div>
+                <div style="font-size:19px;font-weight:800;color:#0f172a;line-height:1.15">${esc(tObj.shortTitle)}</div>
+                ${m ? `<div style="font-size:12.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.fullName)}</div>` : ""}
+              </div>
+            </div>
+
+            <h1 class="ph-big-question">${bigQuestionHtml}</h1>
+
+            ${
+              showSubmittedCard
+                ? `
+                  <div class="ph-standby-box" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:20px;padding:22px 16px">
+                    <div style="font-size:38px;line-height:1">🎉</div>
+                    <strong style="font-size:19px;color:#14532d">ส่งคำตอบขึ้นจอใหญ่แล้ว!</strong>
+                    <p style="margin:0;font-size:14px;color:#166534">👀 เงยหน้าดูผล <strong>Live Word Cloud</strong> บนจอใหญ่พร้อมกับเพื่อนๆ ได้เลย!</p>
+                    ${
+                      mySentWords.length
+                        ? `
+                          <div style="margin-top:6px">
+                            <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px">คำที่คุณส่งให้ '${esc(tObj.shortTitle)}' แล้ว:</div>
+                            <div class="ph-sent-chips">
+                              ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                            </div>
+                          </div>
+                        `
+                        : ""
+                    }
+                    <button type="button" class="ph-submit-btn" style="margin-top:10px" data-act="phone-more-words">
+                      ➕ ส่งคำหรือประโยคเพิ่มอีก
+                    </button>
+                  </div>
+                `
+                : `
+                  <form data-form="phone-send-words" data-target-id="${esc(tObj.id)}" style="display:flex;flex-direction:column;gap:12px">
+                    <div class="ph-inputs-stack">
+                      <div>
+                        <div class="ph-input-label"><span>คำหรือประโยคที่ 1 *</span><span>สูงสุด 54 ตัวอักษร</span></div>
+                        <input
+                          type="text"
+                          id="phW1"
+                          name="w1"
+                          class="ph-answer-input"
+                          autocomplete="off"
+                          placeholder="พิมพ์คำ หรือประโยคสะท้อนตัวตน..."
+                          maxlength="54"
+                        />
+                      </div>
+                      <div>
+                        <div class="ph-input-label"><span>คำหรือประโยคที่ 2 (ถ้ามี)</span></div>
+                        <input
+                          type="text"
+                          id="phW2"
+                          name="w2"
+                          class="ph-answer-input"
+                          autocomplete="off"
+                          placeholder="เพิ่มคำที่ 2 (ไม่บังคับ)..."
+                          maxlength="54"
+                        />
+                      </div>
+                      <div>
+                        <div class="ph-input-label"><span>คำหรือประโยคที่ 3 (ถ้ามี)</span></div>
+                        <input
+                          type="text"
+                          id="phW3"
+                          name="w3"
+                          class="ph-answer-input"
+                          autocomplete="off"
+                          placeholder="เพิ่มคำที่ 3 หรือเลือกอิโมจิด้านล่าง..."
+                          maxlength="54"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="zm-emoji-bar">
+                      ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="phone-emoji" data-emoji="${em}">${em}</button>`).join("")}
+                    </div>
+
+                    <button type="submit" class="ph-submit-btn">🚀 ส่งคำตอบขึ้นจอใหญ่!</button>
+
+                    ${
+                      mySentWords.length
+                        ? `
+                          <div style="text-align:center;padding-top:4px">
+                            <span style="font-size:12px;color:#64748b;font-weight:700">ส่งไปแล้ว ${mySentWords.length} คำ: ${esc(mySentWords.join(" · "))}</span>
+                          </div>
+                        `
+                        : ""
+                    }
+                  </form>
+                `
+            }
+          </section>
+        </main>
+      `
+    );
+  }
+
+  /* --- F. Modals (NO stopPropagation! Clean Backdrop Detection) --- */
   function renderModalNavHeaderHtml(titleHtml, extraRightHtml) {
     return `
       <div class="tv-modal-nav-header">
@@ -1702,11 +2501,12 @@
           <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
         </div>
       </div>
-      ${titleHtml ? `<div style="margin-bottom:10px">${titleHtml}</div>` : ""}
+      ${titleHtml ? `<div style="margin-bottom:12px">${titleHtml}</div>` : ""}
     `;
   }
 
   function renderModalsHtml() {
+    if (state.role === "participant") return "";
     let html = "";
 
     // 1. QR Instructions Modal
@@ -1714,49 +2514,45 @@
       const joinUrl = getJoinUrl();
       const online = Array.from(state.presence.values());
       html += `
-        <div class="tv-modal-backdrop" data-act="close-modals">
-          <div class="tv-modal-card" style="max-width:560px;text-align:center" onclick="event.stopPropagation()">
-            ${renderModalNavHeaderHtml(`<h2 style="margin:0 0 4px;font-size:25px;font-weight:800">Instructions · สแกนเข้าห้องสด</h2><p style="margin:0;font-size:14px;color:#64748b">สแกนด้วยกล้องมือถือ / iPad เพื่อซิงค์ตามจอหลักและส่งคำเข้า Word Cloud สด</p>`)}
+        <div class="tv-modal-backdrop">
+          <div class="tv-modal-card" style="max-width:560px;text-align:center">
+            ${renderModalNavHeaderHtml(
+              `<h2 style="margin:0 0 4px;font-size:24px;font-weight:800">📱 สแกนเข้าโหมดผู้ตอบ (Full Type-Answer)</h2><p style="margin:0;font-size:14px;color:#64748b">มือถือที่สแกนจะวิ่งเปลี่ยนโจทย์ตามจอ Facilitator พร้อมกันอัตโนมัติ</p>`
+            )}
             <div class="tv-qr-box">
               ${buildQrSvg(joinUrl)}
             </div>
-            <div style="display:flex;align-items:center;gap:8px;margin:16px 0;padding:8px 12px;border-radius:12px;background:#f8fafc;border:1px solid #cbd5e1;font-family:var(--font-mono);font-size:12.5px;color:#1d4ed8;word-break:break-all">
+            <div style="display:flex;align-items:center;gap:8px;margin:16px 0;padding:8px 12px;border-radius:12px;background:#f8fafc;border:1px solid #cbd5e1;font-family:var(--font-mono);font-size:12px;color:#1d4ed8;word-break:break-all">
               <span style="flex:1;text-align:left">${esc(joinUrl)}</span>
               <button type="button" class="tv-pill-btn" data-act="copy-url">คัดลอก</button>
             </div>
             ${
               online.length
-                ? `<div style="font-size:13px;color:#166534;font-weight:700;margin-bottom:14px">👥 ออนไลน์ในห้องแล้ว ${online.length} คน: ${esc(online.map((p) => p.nick).join(", "))}</div>`
+                ? `<div style="font-size:13px;color:#166534;font-weight:700;margin-bottom:14px">👥 เช็คอินในห้องแล้ว ${online.length} เครื่อง: ${esc(online.map((p) => p.nick).join(", "))}</div>`
                 : ""
             }
-            <button type="button" class="tv-pill-btn is-primary" style="width:100%;height:42px" data-act="close-modals">พร้อมเริ่มกิจกรรม!</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              ${
+                state.role !== "facilitator"
+                  ? `<a class="tv-pill-btn is-facilitator" style="flex:1;height:42px" href="${esc(getFacilitatorUrl())}">🎛️ สลับจอนี้เป็น Facilitator จอใหญ่</a>`
+                  : ""
+              }
+              <button type="button" class="tv-pill-btn is-primary" style="flex:1;height:42px" data-act="close-modals">พร้อมลุยต่อ!</button>
+            </div>
           </div>
         </div>
       `;
     }
 
-    // 2. Identity Picker Modal
+    // 2. Identity Picker Modal (21 Members — Zero stopPropagation, 100% Clickable!)
     if (state.identityModalOpen) {
       html += `
-        <div class="tv-modal-backdrop" data-act="close-modals">
-          <div class="tv-modal-card" onclick="event.stopPropagation()">
-            ${renderModalNavHeaderHtml(`<h3 style="margin:0 0 4px;font-size:20px;font-weight:800">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h3><p style="margin:0;font-size:14px;color:#64748b">แตะรูปตัวเองครั้งเดียว ระบบจำชื่ออัตโนมัติและซิงค์เข้าห้องสดทันที</p>`)}
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:9px">
-              ${MEMBERS.map(
-                (m) => `
-                  <button
-                    type="button"
-                    style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 6px;border-radius:16px;border:1.5px solid ${state.myMemberUid === m.uid ? "#2563eb" : "#e2e8f0"};background:${state.myMemberUid === m.uid ? "#eff6ff" : "#f8fafc"};cursor:pointer"
-                    data-act="select-identity"
-                    data-uid="${esc(m.uid)}"
-                  >
-                    <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;object-position:center 16%" />
-                    <strong style="font-size:14px;color:#0f172a">${esc(m.nickname)}</strong>
-                    <span style="font-size:11.5px;color:#64748b">${esc(m.kind === "student" ? m.shortNo : m.firstName)}</span>
-                  </button>
-                `
-              ).join("")}
-            </div>
+        <div class="tv-modal-backdrop">
+          <div class="tv-modal-card">
+            ${renderModalNavHeaderHtml(
+              `<h3 style="margin:0 0 4px;font-size:21px;font-weight:800">เลือกชื่อของคุณในกลุ่มกุฉินารายณ์ 👋</h3><p style="margin:0;font-size:14px;color:#64748b">แตะรูปตัวเองครั้งเดียว ระบบจำชื่ออัตโนมัติและซิงค์เข้าห้องสดทันที (21 คน)</p>`
+            )}
+            ${renderIdentityGridCardsHtml()}
           </div>
         </div>
       `;
@@ -1768,8 +2564,8 @@
       const agg = getAggregatedWords(tid);
       const tObj = TARGET_MAP.get(tid);
       html += `
-        <div class="tv-modal-backdrop" data-act="close-modals">
-          <div class="tv-modal-card" onclick="event.stopPropagation()">
+        <div class="tv-modal-backdrop">
+          <div class="tv-modal-card">
             ${renderModalNavHeaderHtml(
               `<h3 style="margin:0;font-size:20px;font-weight:800">📊 ความถี่คำสะท้อน — ${esc(tObj ? tObj.shortTitle : "")} (${agg.totalSubmissions} คำ)</h3>`,
               `<button type="button" class="tv-pill-btn" style="color:#dc2626;border-color:#fecaca" data-act="clear-target" data-target-id="${esc(tid)}">🗑️ ล้างสไลด์นี้</button>`
@@ -1808,8 +2604,8 @@
     // 4. Roadmap & 5 Objectives Modal
     if (state.roadmapModalOpen) {
       html += `
-        <div class="tv-modal-backdrop" data-act="close-modals">
-          <div class="tv-modal-card" onclick="event.stopPropagation()">
+        <div class="tv-modal-backdrop">
+          <div class="tv-modal-card">
             ${renderModalNavHeaderHtml(
               `<h3 style="margin:0;font-size:20px;font-weight:800">🚂 เส้นทางกลุ่มที่ 1: รพร.กุฉินารายณ์ จ.กาฬสินธุ์</h3>`,
               `<a class="tv-pill-btn is-primary" href="${esc(DATA.meta.icsPath)}" download="RACM303_2569_Group1_Kuchinarai.ics">📅 ปฏิทิน .ics</a>`
@@ -1841,25 +2637,36 @@
     const el = document.getElementById("tvConnBadge");
     if (!el) return;
     el.classList.toggle("is-offline", state.connectedCount <= 0);
-    el.innerHTML = `<span class="tv-live-dot"></span><span>${state.connectedCount > 0 ? `Live` : `Local`}</span>`;
+    const label = state.role === "participant" ? (state.connectedCount > 0 ? "ซิงค์จอใหญ่" : "กำลังเชื่อม...") : state.connectedCount > 0 ? "Live Sync" : "Local";
+    el.innerHTML = `<span class="tv-live-dot"></span><span>${label}</span>`;
   }
 
-  /* Re-render without losing text currently typed inside #zmWordInput */
+  /* Re-render without losing text currently typed inside ANY input box! */
   function renderPreservingFocus() {
+    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phReasonInput"];
+    const savedValues = {};
+    preserveIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) savedValues[id] = el.value;
+    });
+
     const activeEl = document.activeElement;
-    const wasTypingWord = activeEl && activeEl.id === "zmWordInput";
-    const draftVal = wasTypingWord ? activeEl.value : "";
-    const selStart = wasTypingWord ? activeEl.selectionStart : null;
+    const activeId = activeEl && activeEl.id && preserveIds.includes(activeEl.id) ? activeEl.id : "";
+    const selStart = activeId ? activeEl.selectionStart : null;
 
     render();
 
-    if (wasTypingWord) {
-      const nextInp = document.getElementById("zmWordInput");
-      if (nextInp) {
-        nextInp.value = draftVal;
-        nextInp.focus();
+    Object.keys(savedValues).forEach((id) => {
+      const nextEl = document.getElementById(id);
+      if (nextEl && savedValues[id]) nextEl.value = savedValues[id];
+    });
+
+    if (activeId) {
+      const focusTarget = document.getElementById(activeId);
+      if (focusTarget) {
+        focusTarget.focus();
         try {
-          if (selStart !== null) nextInp.setSelectionRange(selStart, selStart);
+          if (selStart !== null) focusTarget.setSelectionRange(selStart, selStart);
         } catch (_) {}
       }
     }
@@ -1868,27 +2675,65 @@
   function render() {
     const root = document.getElementById("appRoot");
     if (!root) return;
-    root.innerHTML =
-      renderTopBarHtml() +
-      (state.view === "detail" ? renderZoomedDetailHtml() : renderOverviewHtml()) +
-      renderModalsHtml();
+
+    root.classList.toggle("is-bigscreen-fit", state.role !== "participant");
+
+    if (state.role === "participant") {
+      root.innerHTML = renderParticipantPhoneHtml();
+      return;
+    }
+
+    const stageHtml =
+      state.view === "lobby"
+        ? renderFacilitatorLobbyHtml()
+        : state.view === "detail"
+        ? renderZoomedDetailHtml()
+        : renderOverviewHtml();
+
+    root.innerHTML = renderTopBarHtml() + stageHtml + renderModalsHtml();
   }
 
-  /* ---------- 11. Event Delegation & Apple TV D-Pad / Keyboard Navigation ---------- */
+  /* ---------- 12. Event Delegation (Zero stopPropagation — 100% Reliable Clicks!) ---------- */
+  document.addEventListener("focusin", (ev) => {
+    const id = ev.target && ev.target.id;
+    if (id === "phW1" || id === "phW2" || id === "phW3") {
+      state.activeEmojiInputId = id;
+    }
+  });
+
+  document.addEventListener("input", (ev) => {
+    const t = ev.target;
+    if (t && t.id === "phRatingSlider") {
+      const v = Number(t.value || 4.5);
+      state.phoneDraftRating = v;
+      const ro = document.getElementById("phRatingReadout");
+      if (ro) ro.innerHTML = `${v.toFixed(1)} <span style="font-size:16px;color:#64748b">/ 5.0</span>`;
+    }
+  });
+
   document.addEventListener("click", (ev) => {
-    const btn = ev.target.closest("[data-act]");
+    // Clean backdrop-only close (replaces broken stopPropagation!)
+    if (ev.target && ev.target.classList && ev.target.classList.contains("tv-modal-backdrop")) {
+      clearAllModals();
+      render();
+      return;
+    }
+
+    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-act]") : null;
     if (!btn) return;
     const act = btn.getAttribute("data-act");
 
     if (act === "nav-back") {
       stepBackOneScreen();
+    } else if (act === "go-lobby") {
+      goToLobbySlide1(false);
     } else if (act === "zoom-in-target") {
       const tid = btn.getAttribute("data-target-id");
       const gIdx = Number(btn.getAttribute("data-grid-idx"));
       if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
-      zoomIntoTarget(tid, btn, false);
+      zoomIntoTarget(tid, btn, false, false);
     } else if (act === "go-overview") {
-      zoomOutToOverview(false);
+      zoomOutToOverview(false, false);
     } else if (act === "spin-roulette") {
       spinAppleTvRoulette();
     } else if (act === "prev-person") {
@@ -1899,13 +2744,14 @@
       const nextTab = btn.getAttribute("data-tab") || "wordcloud";
       if (nextTab !== state.detailTab) pushNavHistory();
       state.detailTab = nextTab;
-      broadcastPointer();
+      broadcastMasterPointer(false);
       render();
     } else if (act === "toggle-hide-words") {
       state.hideWordsUntilReveal = !state.hideWordsUntilReveal;
+      broadcastMasterPointer(false);
       render();
-    } else if (act === "toggle-follow") {
-      state.followHost = !state.followHost;
+    } else if (act === "toggle-stage-composer") {
+      state.showComposerOnStage = !state.showComposerOnStage;
       render();
     } else if (act === "open-qr") {
       if (!state.qrModalOpen) pushNavHistory();
@@ -1933,13 +2779,56 @@
       render();
     } else if (act === "select-identity") {
       const uid = btn.getAttribute("data-uid") || "";
+      if (!MEMBER_MAP.has(uid)) return;
       state.myMemberUid = uid;
       state.myGuestName = "";
       sSet("kuchi2569_my_uid", uid);
       sSet("kuchi2569_guest_name", "");
       state.identityModalOpen = false;
+      state.phonePickingIdentity = false;
+      playChime([523.25, 659.25, 783.99], 0.09, "triangle", 0.05);
       publishMyPresence();
       render();
+    } else if (act === "phone-pick-name") {
+      state.phonePickingIdentity = true;
+      render();
+    } else if (act === "phone-cancel-pick") {
+      state.phonePickingIdentity = false;
+      render();
+    } else if (act === "phone-more-words") {
+      state.phoneJustSubmittedTargetId = "";
+      render();
+      setTimeout(() => {
+        const w1 = document.getElementById("phW1");
+        if (w1) w1.focus();
+      }, 40);
+    } else if (act === "phone-enable-manual") {
+      state.phoneManualOverride = true;
+      render();
+    } else if (act === "phone-disable-manual") {
+      state.phoneManualOverride = false;
+      render();
+    } else if (act === "phone-manual-target") {
+      const tid = btn.getAttribute("data-target-id") || "m_smart";
+      state.activeTargetId = tid;
+      state.view = "detail";
+      state.detailTab = "wordcloud";
+      state.phoneJustSubmittedTargetId = "";
+      render();
+    } else if (act === "phone-manual-back-list") {
+      state.view = "overview";
+      render();
+    } else if (act === "phone-emoji") {
+      const em = btn.getAttribute("data-emoji") || "";
+      const ids = ["phW1", "phW2", "phW3"];
+      let targetInput = document.getElementById(state.activeEmojiInputId);
+      if (!targetInput || targetInput.value.trim().length > 46) {
+        targetInput = ids.map((id) => document.getElementById(id)).find((el) => el && !el.value.trim()) || document.getElementById("phW1");
+      }
+      if (targetInput) {
+        targetInput.value = (targetInput.value ? targetInput.value + " " : "") + em;
+        targetInput.focus();
+      }
     } else if (act === "copy-url") {
       const u = getJoinUrl();
       if (navigator.clipboard) navigator.clipboard.writeText(u).catch(() => {});
@@ -1972,7 +2861,7 @@
           if (normWordKey(mp.get(k).text) === norm) mp.delete(k);
         });
         saveSessionStore();
-        publishPacket("word_delete", { type: "word_delete", targetId: tid, normKey: norm }, false);
+        publishPacket(`${state.sessionId}/word_delete`, { type: "word_delete", targetId: tid, normKey: norm }, false);
         scheduleSnapshotPublish();
         render();
       }
@@ -1982,7 +2871,7 @@
         state.wordsByTarget.delete(tid);
         state.ratingsByTarget.delete(tid);
         saveSessionStore();
-        publishPacket("clear_target", { type: "clear_target", targetId: tid }, false);
+        publishPacket(`${state.sessionId}/clear_target`, { type: "clear_target", targetId: tid }, false);
         scheduleSnapshotPublish();
         render();
       }
@@ -2017,6 +2906,7 @@
       state.sessionId = String(t.value || "sg1_intro");
       sSet("kuchi2569_session", state.sessionId);
       loadSessionStore(state.sessionId);
+      broadcastMasterPointer(false);
       scheduleSnapshotPublish();
       render();
     }
@@ -2024,17 +2914,57 @@
 
   document.addEventListener("submit", (ev) => {
     const form = ev.target;
-    if (!form || form.getAttribute("data-form") !== "send-word") return;
-    ev.preventDefault();
-    const tid = form.getAttribute("data-target-id");
-    const inp = form.elements.word;
-    if (inp && submitWord(tid, inp.value)) {
-      inp.value = "";
+    if (!form || !form.getAttribute) return;
+    const fType = form.getAttribute("data-form");
+
+    if (fType === "send-word") {
+      ev.preventDefault();
+      const tid = form.getAttribute("data-target-id");
+      const inp = form.elements.word;
+      if (inp && submitWordBatch(tid, [inp.value])) {
+        inp.value = "";
+      }
+    } else if (fType === "phone-send-words") {
+      ev.preventDefault();
+      const tid = form.getAttribute("data-target-id");
+      const vals = [
+        form.elements.w1 ? form.elements.w1.value : "",
+        form.elements.w2 ? form.elements.w2.value : "",
+        form.elements.w3 ? form.elements.w3.value : ""
+      ].filter((v) => String(v || "").trim().length > 0);
+
+      if (!vals.length) {
+        const w1 = document.getElementById("phW1");
+        if (w1) w1.focus();
+        return;
+      }
+      if (submitWordBatch(tid, vals)) {
+        state.phoneJustSubmittedTargetId = tid;
+        render();
+      }
+    } else if (fType === "phone-send-rating") {
+      ev.preventDefault();
+      const tid = form.getAttribute("data-target-id");
+      const sc = form.elements.score ? Number(form.elements.score.value) : state.phoneDraftRating;
+      const rs = form.elements.reason ? form.elements.reason.value : "";
+      submitRating(tid, sc, rs);
+    } else if (fType === "guest-identity") {
+      ev.preventDefault();
+      const gName = String((form.elements.guestName && form.elements.guestName.value) || "").trim();
+      if (!gName) return;
+      state.myMemberUid = "";
+      state.myGuestName = gName;
+      sSet("kuchi2569_my_uid", "");
+      sSet("kuchi2569_guest_name", gName);
+      state.phonePickingIdentity = false;
+      publishMyPresence();
+      render();
     }
   });
 
-  /* Apple TV D-Pad & Keyboard Shortcuts */
+  /* Apple TV D-Pad & Facilitator Keyboard Shortcuts */
   document.addEventListener("keydown", (ev) => {
+    if (state.role === "participant") return;
     const tag = (ev.target && ev.target.tagName) || "";
     const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 
@@ -2043,17 +2973,14 @@
         ev.target.blur();
         return;
       }
-      if (state.qrModalOpen || state.identityModalOpen || state.roadmapModalOpen || state.resultsModalTargetId) {
-        state.qrModalOpen = false;
-        state.identityModalOpen = false;
-        state.roadmapModalOpen = false;
-        state.resultsModalTargetId = "";
+      if (hasAnyOpenModal()) {
+        clearAllModals();
         render();
         return;
       }
       if (state.view === "detail") {
         ev.preventDefault();
-        zoomOutToOverview(false);
+        zoomOutToOverview(false, false);
       }
       return;
     }
@@ -2078,10 +3005,18 @@
       return;
     }
 
+    if (state.view === "lobby") {
+      if (ev.key === "ArrowRight" || ev.key === "Enter" || ev.key === " " || ev.key === "PageDown") {
+        ev.preventDefault();
+        zoomOutToOverview(false, false);
+      }
+      return;
+    }
+
     if (state.view === "overview") {
       const gridEl = document.getElementById("tvOverviewGrid");
-      const totalTiles = 24;
-      let cols = 6;
+      const totalTiles = MEMBERS.length; // 21 exact cards
+      let cols = 7;
       if (gridEl) {
         const tracks = window.getComputedStyle(gridEl).gridTemplateColumns.split(" ").filter(Boolean).length;
         if (tracks > 0) cols = tracks;
@@ -2138,6 +3073,7 @@
   window.addEventListener(
     "resize",
     () => {
+      if (state.role === "participant") return;
       if (state.view !== "detail" || state.detailTab !== "wordcloud") return;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => renderPreservingFocus(), 180);

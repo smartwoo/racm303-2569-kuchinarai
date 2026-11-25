@@ -1,18 +1,16 @@
 /* ==========================================================================
-   RACM 303 (2569) — Kuchi Gang 2569 Apple TV Zoom Overview & Mentimeter Stage
-   - Opens directly onto 24-Tile Overview Grid (22 Members + Topic + Live QR)
+   RACM 303 (2569) — Kuchi Gang 2569 Apple TV Overview, Facilitator & Phone Sync
+   - 21-Member Exact Grid (พี่สมาร์ท + 20 นศพ. · 7x3 on 16:9 PC, 3x7 Tablet, 1+2x10 Mobile)
+   - Slide 1 Giant QR Code Lobby + Live 21-Member Check-In Wall (Mentimeter/Kahoot style)
+   - Forced Synchronized Full Type-Answer Phone Controller (join.html / #join)
    - True Apple TV (tvOS) Origin-Anchored Zoom-In / Zoom-Out Transitions
-   - Responsive & Optimal Typography for:
-     * Full Screen PC / Classroom TV 16:9
-     * Tablet Horizontal & Tablet Vertical (iPadOS)
-     * Foldable / Dual-Screen (Surface Duo / Galaxy Z Fold)
-     * Mobile Vertical & Mobile Horizontal (iOS / Android)
+   - Responsive & Optimal Typography for Mobile V/H, Duo/Fold, Tablet V/H, PC 16:9
    ========================================================================== */
 :root {
   --tv-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --tv-spring: cubic-bezier(0.18, 0.92, 0.26, 1);
   --bg-ambient: radial-gradient(1200px 620px at 14% 8%, #dbeafe 0%, #f1f5f9 48%, #ffe4e6 100%);
-  --surface-card: rgba(255, 255, 255, 0.92);
+  --surface-card: rgba(255, 255, 255, 0.94);
   --surface-solid: #ffffff;
   --ink-strong: #0f172a;
   --ink-body: #1e293b;
@@ -70,7 +68,7 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   1. APPLE TV FLOATING TOP CAPSULE BAR (Responsive, Never Overlaps!)
+   1. APPLE TV FLOATING TOP CAPSULE BAR (Responsive, Universal Back & Home)
    ========================================================================== */
 .tv-topbar-wrap {
   position: sticky;
@@ -81,7 +79,7 @@ button, input, select, textarea {
 }
 
 .tv-topbar {
-  max-width: 1760px;
+  max-width: 1780px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -89,7 +87,7 @@ button, input, select, textarea {
   gap: 10px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border: 1px solid rgba(15, 23, 42, 0.09);
@@ -116,6 +114,35 @@ button, input, select, textarea {
   height: 15px;
   flex-shrink: 0;
   display: block;
+}
+
+.tv-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #fff;
+  color: var(--ink-body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: transform 0.18s var(--tv-ease), box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.tv-pill-btn:hover {
+  transform: translateY(-1px) scale(1.02);
+  border-color: var(--accent-blue);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14);
+}
+
+.tv-pill-btn:active {
+  transform: scale(0.97);
 }
 
 .tv-pill-btn.is-nav-back {
@@ -150,15 +177,43 @@ button, input, select, textarea {
   padding: 0 13px;
 }
 
-.tv-modal-nav-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  border-bottom: 1px solid #e2e8f0;
+.tv-pill-btn.is-primary {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.26);
+}
+
+.tv-pill-btn.is-facilitator {
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.28);
+}
+
+.tv-pill-btn.is-roulette {
+  background: linear-gradient(135deg, #f43f5e, #d946ef);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(244, 63, 94, 0.26);
+}
+
+.tv-pill-btn.is-active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.tv-pill-select {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: var(--ink-strong);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .tv-brand-btn {
@@ -195,6 +250,10 @@ button, input, select, textarea {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
 }
 
+.tv-logo-badge.is-fac {
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+}
+
 .tv-brand-titles {
   display: flex;
   flex-direction: column;
@@ -204,7 +263,7 @@ button, input, select, textarea {
 .tv-brand-main {
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: clamp(14px, 1.15vw, 17px);
+  font-size: clamp(14px, 1.12vw, 16.5px);
   color: var(--ink-strong);
   white-space: nowrap;
   overflow: hidden;
@@ -213,7 +272,7 @@ button, input, select, textarea {
 }
 
 .tv-brand-sub {
-  font-size: clamp(11px, 0.82vw, 12.5px);
+  font-size: clamp(11px, 0.8vw, 12.5px);
   color: var(--ink-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -226,75 +285,6 @@ button, input, select, textarea {
   gap: 7px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.tv-pill-select {
-  height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: var(--ink-strong);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.tv-pill-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 13px;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #fff;
-  color: var(--ink-body);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-  transition: transform 0.18s var(--tv-ease), box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-}
-
-.tv-pill-btn:hover {
-  transform: translateY(-1px) scale(1.02);
-  border-color: var(--accent-blue);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14);
-}
-
-.tv-pill-btn.is-primary {
-  background: linear-gradient(135deg, #2563eb, #4f46e5);
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.26);
-}
-
-.tv-pill-btn.is-roulette {
-  background: linear-gradient(135deg, #f43f5e, #d946ef);
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(244, 63, 94, 0.26);
-}
-
-.tv-pill-btn.is-back-zoom {
-  background: #0f172a;
-  border-color: #0f172a;
-  color: #fff;
-  padding: 0 15px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
-}
-
-.tv-pill-btn.is-back-zoom:hover {
-  background: #1e293b;
-}
-
-.tv-pill-btn.is-active {
-  background: #eff6ff;
-  border-color: #2563eb;
-  color: #1d4ed8;
 }
 
 .tv-live-chip {
@@ -332,12 +322,270 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   2. OVERVIEW HOME BOARD (24-TILE APPLE TV LAUNCHER GRID)
+   2. SLIDE 1: FACILITATOR GIANT QR CODE LOBBY + 21-MEMBER CHECK-IN WALL
+   ========================================================================== */
+.fac-lobby-outer {
+  flex: 1;
+  width: 100%;
+  max-width: 1780px;
+  margin: 0 auto;
+  padding: 6px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: tvModalPop 0.34s var(--tv-spring) both;
+}
+
+.fac-lobby-card {
+  position: relative;
+  flex: 1;
+  background: #ffffff;
+  border-radius: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-stage);
+  display: grid;
+  grid-template-columns: minmax(310px, 430px) minmax(0, 1fr);
+  gap: clamp(18px, 2.4vw, 36px);
+  padding: clamp(18px, 2.2vw, 32px);
+  overflow: hidden;
+  isolation: isolate;
+  align-items: center;
+}
+
+.fac-qr-pane {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: clamp(16px, 1.8vw, 24px);
+  border-radius: 24px;
+  background: linear-gradient(160deg, #eff6ff 0%, #f5f3ff 100%);
+  border: 1.5px solid #bfdbfe;
+}
+
+.fac-slide1-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.fac-qr-giant {
+  width: min(300px, 34dvh, 72vw);
+  aspect-ratio: 1 / 1;
+  padding: 12px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 3px solid #0f172a;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.2);
+}
+
+.fac-qr-giant svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fac-url-pill {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: #1e40af;
+  word-break: break-all;
+  text-align: left;
+}
+
+.fac-checkin-pane {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.2vw, 16px);
+  min-width: 0;
+  height: 100%;
+  justify-content: center;
+}
+
+.fac-lobby-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(22px, 2.3vw, 36px);
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.fac-lobby-sub {
+  margin: 0;
+  font-size: clamp(13.5px, 1.05vw, 16.5px);
+  color: #475569;
+  line-height: 1.45;
+}
+
+.fac-steps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fac-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: clamp(12px, 0.9vw, 14px);
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.fac-step-num {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fac-checkin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fac-checkin-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  border: 1.5px solid #6ee7b7;
+  color: #065f46;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.fac-checkin-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: clamp(6px, 0.65vw, 10px);
+}
+
+.fac-checkin-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  opacity: 0.56;
+  cursor: pointer;
+  transition: all 0.22s var(--tv-ease);
+}
+
+.fac-checkin-item:hover {
+  opacity: 0.92;
+  transform: translateY(-2px);
+  border-color: #93c5fd;
+}
+
+.fac-checkin-item.is-online {
+  opacity: 1;
+  background: linear-gradient(155deg, #ecfdf5 0%, #eff6ff 100%);
+  border-color: #10b981;
+  box-shadow: 0 8px 18px -6px rgba(16, 185, 129, 0.32);
+  transform: scale(1.02);
+}
+
+.fac-checkin-item img {
+  width: clamp(38px, 3.2vw, 52px);
+  height: clamp(38px, 3.2vw, 52px);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 16%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.fac-checkin-item .fac-ci-nick {
+  font-size: clamp(11.5px, 0.85vw, 13.5px);
+  font-weight: 800;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.fac-ci-tick {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fac-cta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.fac-cta-big {
+  height: 46px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 15.5px;
+  font-weight: 800;
+}
+
+/* ==========================================================================
+   3. OVERVIEW BOARD (21-MEMBER APPLE TV GRID: 7x3 ON 16:9 PC)
    ========================================================================== */
 .tv-overview-stage {
   flex: 1;
   width: 100%;
-  max-width: 1760px;
+  max-width: 1780px;
   margin: 0 auto;
   padding: 6px 16px 18px;
   display: flex;
@@ -347,7 +595,6 @@ button, input, select, textarea {
   transition: transform 0.42s var(--tv-ease), opacity 0.34s ease, filter 0.34s ease;
 }
 
-/* Apple TV Zoom-In / Zoom-Out Choreography on Overview Layer */
 .tv-overview-stage.is-zooming-away {
   transform: scale(1.34);
   opacity: 0;
@@ -376,8 +623,8 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 4px 6px;
+  gap: 10px;
+  padding: 2px 4px;
   flex-wrap: wrap;
 }
 
@@ -391,33 +638,35 @@ button, input, select, textarea {
 .tv-overview-headline h1 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: clamp(18px, 1.65vw, 26px);
+  font-size: clamp(18px, 1.55vw, 25px);
   font-weight: 800;
   color: var(--ink-strong);
   letter-spacing: -0.02em;
 }
 
 .tv-overview-hint {
-  font-size: clamp(12.5px, 0.95vw, 15px);
+  font-size: clamp(12.5px, 0.92vw, 14.5px);
   font-weight: 600;
   color: var(--ink-muted);
 }
 
-/* 24-Tile Apple TV Responsive Grid */
+/* 21-Tile Apple TV Responsive Grid (7 columns x 3 rows on wide screens) */
 .tv-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: clamp(10px, 0.95vw, 15px);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: clamp(9px, 0.85vw, 14px);
   align-content: stretch;
 }
 
 .tv-tile {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: clamp(10px, 0.9vw, 14px);
-  padding: clamp(10px, 0.95vw, 14px) clamp(11px, 1vw, 16px);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(8px, 0.75vw, 12px);
+  padding: clamp(10px, 0.9vw, 14px);
   border-radius: 20px;
   background: var(--surface-card);
   border: 1.5px solid var(--border-subtle);
@@ -433,7 +682,6 @@ button, input, select, textarea {
   will-change: transform;
 }
 
-/* Specular Apple TV Sheen */
 .tv-tile::after {
   content: "";
   position: absolute;
@@ -447,7 +695,7 @@ button, input, select, textarea {
 .tv-tile:hover,
 .tv-tile:focus-visible,
 .tv-tile.is-dpad-focus {
-  transform: translateY(-4px) scale(1.038);
+  transform: translateY(-4px) scale(1.035);
   border-color: rgba(37, 99, 235, 0.55);
   background: #ffffff;
   box-shadow: var(--shadow-tile-hover);
@@ -483,25 +731,22 @@ button, input, select, textarea {
 }
 
 .tv-tile.is-has-words {
-  border-color: rgba(37, 99, 235, 0.24);
+  border-color: rgba(37, 99, 235, 0.26);
   background: linear-gradient(155deg, #ffffff 0%, #f8fbff 100%);
 }
 
-.tv-tile.is-special-topic {
-  background: linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%);
-  border-color: #bfdbfe;
-}
-
-.tv-tile.is-special-qr {
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-  border-color: #1e40af;
-  color: #fff;
+.tv-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .tv-tile-avatar-wrap {
   position: relative;
-  width: clamp(54px, 4.3vw, 72px);
-  height: clamp(54px, 4.3vw, 72px);
+  width: clamp(50px, 3.8vw, 66px);
+  height: clamp(50px, 3.8vw, 66px);
   border-radius: 16px;
   overflow: hidden;
   background: #e2e8f0;
@@ -525,7 +770,7 @@ button, input, select, textarea {
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.78);
   color: #fff;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 1.3;
 }
@@ -541,25 +786,25 @@ button, input, select, textarea {
   border: 2px solid #fff;
 }
 
-.tv-tile-body {
+.tv-tile-idbox {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .tv-tile-toprow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
 
 .tv-tile-nick {
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: clamp(15.5px, 1.22vw, 20px);
+  font-size: clamp(15px, 1.18vw, 19.5px);
   color: var(--ink-strong);
   line-height: 1.2;
   white-space: nowrap;
@@ -567,25 +812,21 @@ button, input, select, textarea {
   text-overflow: ellipsis;
 }
 
-.tv-tile.is-special-qr .tv-tile-nick {
-  color: #ffffff;
-}
-
 .tv-tile-count-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
+  gap: 2px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 800;
   flex-shrink: 0;
 }
 
 .tv-tile-sub {
-  font-size: clamp(12.5px, 0.88vw, 14px);
+  font-size: clamp(12px, 0.84vw, 13.5px);
   font-weight: 600;
   color: #475569;
   white-space: nowrap;
@@ -593,12 +834,9 @@ button, input, select, textarea {
   text-overflow: ellipsis;
 }
 
-.tv-tile.is-special-qr .tv-tile-sub {
-  color: #bfdbfe;
-}
-
 .tv-tile-words {
-  font-size: clamp(12px, 0.86vw, 13.5px);
+  width: 100%;
+  font-size: clamp(12px, 0.85vw, 13.5px);
   color: #1e40af;
   font-weight: 600;
   line-height: 1.35;
@@ -606,6 +844,8 @@ button, input, select, textarea {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
 }
 
 .tv-tile-words.is-empty {
@@ -614,14 +854,14 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   3. ZOOMED-IN STAGE: "ถามโจทย์ใหญ่" (APPLE TV SPRING ZOOM + MENTIMETER)
+   4. ZOOMED-IN BIG QUESTION STAGE (APPLE TV SPRING ZOOM + MENTIMETER)
    ========================================================================== */
 .tv-zoom-stage-outer {
   flex: 1;
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 1760px;
+  max-width: 1780px;
   margin: 0 auto;
   padding: 4px 16px calc(14px + var(--kb-inset));
   min-height: 0;
@@ -672,7 +912,6 @@ button, input, select, textarea {
   min-height: 0;
 }
 
-/* Mentimeter Playful Geometric Edge Accents */
 .menti-decor {
   position: absolute;
   inset: 0;
@@ -688,7 +927,7 @@ button, input, select, textarea {
   width: 110px;
   height: 76px;
   background: #8ab4f8;
-  opacity: 0.55;
+  opacity: 0.52;
   transform: skewY(-13deg);
 }
 
@@ -700,7 +939,7 @@ button, input, select, textarea {
   height: 130px;
   border-radius: 50%;
   background: #fda4af;
-  opacity: 0.55;
+  opacity: 0.52;
 }
 
 .menti-shape-yellow-tri {
@@ -710,7 +949,7 @@ button, input, select, textarea {
   width: 68px;
   height: 84px;
   background: #fef08a;
-  opacity: 0.72;
+  opacity: 0.7;
   clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
@@ -721,7 +960,7 @@ button, input, select, textarea {
   width: 72px;
   height: 72px;
   background: #86efac;
-  opacity: 0.55;
+  opacity: 0.52;
   border-radius: 100% 0 0 0;
 }
 
@@ -732,11 +971,10 @@ button, input, select, textarea {
   width: 72px;
   height: 82px;
   background: #c4b5fd;
-  opacity: 0.6;
+  opacity: 0.58;
   clip-path: polygon(100% 0, 0 100%, 100% 100%);
 }
 
-/* Zoomed Stage Inner Toolbar */
 .zm-toolbar {
   position: relative;
   z-index: 4;
@@ -755,7 +993,6 @@ button, input, select, textarea {
   flex-wrap: wrap;
 }
 
-/* BIG HERO QUESTION HEADER ("ถามโจทย์ใหญ่") */
 .zm-hero-header {
   position: relative;
   z-index: 3;
@@ -818,7 +1055,7 @@ button, input, select, textarea {
   flex: 1;
   margin: 0;
   font-family: var(--font-heading);
-  font-size: clamp(20px, 2.28vw, 37px);
+  font-size: clamp(20px, 2.25vw, 36px);
   font-weight: 700;
   line-height: 1.32;
   color: #0f172a;
@@ -834,7 +1071,6 @@ button, input, select, textarea {
   font-weight: 800;
 }
 
-/* Word Cloud Stage Area */
 .zm-cloud-body {
   position: relative;
   z-index: 2;
@@ -887,10 +1123,10 @@ button, input, select, textarea {
 
 .zm-empty-prompt {
   text-align: center;
-  max-width: 560px;
+  max-width: 600px;
   padding: 24px 28px;
   border-radius: 22px;
-  background: rgba(248, 250, 252, 0.9);
+  background: rgba(248, 250, 252, 0.92);
   border: 1.5px dashed #cbd5e1;
 }
 
@@ -907,7 +1143,34 @@ button, input, select, textarea {
   color: #64748b;
 }
 
-/* Bottom Interactive Composer Dock (Works on PC, Tablet, Duo & Mobile!) */
+/* Clean Mentimeter Big-Screen Result Footer (Facilitator Mode) */
+.zm-fac-footer {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 22px 14px;
+  background: rgba(248, 250, 252, 0.88);
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.zm-fac-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1.5px solid #93c5fd;
+  color: #1e40af;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* Bottom Interactive Composer Dock (Explorer Mode / Optional Facilitator Quick-Type) */
 .zm-composer-dock {
   position: relative;
   z-index: 4;
@@ -935,7 +1198,7 @@ button, input, select, textarea {
   border-radius: 999px;
   border: 1.5px solid #cbd5e1;
   background: #ffffff;
-  font-size: 16px; /* >= 16px prevents iOS Safari auto-zoom! */
+  font-size: 16px;
   color: var(--ink-strong);
   min-width: 0;
 }
@@ -992,8 +1255,8 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 20px;
-  padding: 16px clamp(20px, 5vw, 80px);
+  gap: 18px;
+  padding: 14px clamp(20px, 5vw, 80px);
 }
 
 .zm-scale-box {
@@ -1023,8 +1286,8 @@ button, input, select, textarea {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: #2563eb;
   color: #fff;
@@ -1038,7 +1301,252 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   4. MODALS (QR INSTRUCTIONS, RESULTS FREQUENCY, ROADMAP)
+   5. STUDENT FULL TYPE-ANSWER PHONE CONTROLLER (join.html / #join)
+   ========================================================================== */
+.ph-shell {
+  flex: 1;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 6px 14px calc(20px + var(--kb-inset));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ph-card {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  box-shadow: 0 18px 46px -12px rgba(15, 23, 42, 0.15);
+  padding: clamp(16px, 4vw, 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: tvModalPop 0.28s var(--tv-spring) both;
+}
+
+.ph-sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%);
+  border: 1px solid #93c5fd;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.ph-person-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #eff6ff 0%, #f5f3ff 100%);
+  border: 1.5px solid #bfdbfe;
+}
+
+.ph-person-banner img {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  object-fit: cover;
+  object-position: center 16%;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+  flex-shrink: 0;
+}
+
+.ph-big-question {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(17.5px, 4.4vw, 22px);
+  font-weight: 800;
+  line-height: 1.38;
+  color: #0f172a;
+}
+
+.ph-big-question .zm-highlight-name {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.13);
+  color: #1d4ed8;
+}
+
+.ph-inputs-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ph-input-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.ph-answer-input {
+  width: 100%;
+  height: 50px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 1.8px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 16.5px; /* Prevents iOS auto-zoom */
+  font-weight: 600;
+  color: #0f172a;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ph-answer-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+}
+
+.ph-submit-btn {
+  width: 100%;
+  height: 54px;
+  border-radius: 18px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 24px -4px rgba(37, 99, 235, 0.36);
+  transition: transform 0.16s var(--tv-ease), filter 0.16s ease;
+}
+
+.ph-submit-btn:hover {
+  filter: brightness(1.06);
+}
+
+.ph-submit-btn:active {
+  transform: scale(0.98);
+}
+
+.ph-standby-box {
+  text-align: center;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ph-pulse-ring {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, #2563eb, #10b981);
+  box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.12);
+  animation: phPulse 2.1s infinite ease-in-out;
+}
+
+.ph-pulse-ring img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 16%;
+  border: 2px solid #ffffff;
+}
+
+@keyframes phPulse {
+  0%, 100% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.14); }
+  50% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0.22); }
+}
+
+.ph-sent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.ph-sent-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* Identity Picker Grid (Used both in Phone Onboarding & Modal — 100% Clickable!) */
+.id-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 9px;
+}
+
+.id-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 6px;
+  border-radius: 16px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.16s var(--tv-ease), border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.id-picker-card:hover {
+  transform: translateY(-2px);
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 8px 18px -6px rgba(37, 99, 235, 0.25);
+}
+
+.id-picker-card:active {
+  transform: scale(0.96);
+}
+
+.id-picker-card.is-selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.id-picker-card img {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 16%;
+  pointer-events: none;
+}
+
+.id-picker-card strong {
+  font-size: 14px;
+  color: #0f172a;
+  pointer-events: none;
+}
+
+.id-picker-card span {
+  font-size: 11.5px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   6. MODALS (NO stopPropagation! Clean Backdrop Click Detection)
    ========================================================================== */
 .tv-modal-backdrop {
   position: fixed;
@@ -1055,7 +1563,7 @@ button, input, select, textarea {
 .tv-modal-card {
   background: #fff;
   border-radius: 26px;
-  max-width: 760px;
+  max-width: 780px;
   width: 100%;
   max-height: 88dvh;
   overflow-y: auto;
@@ -1064,8 +1572,19 @@ button, input, select, textarea {
   animation: tvModalPop 0.26s var(--tv-spring) both;
 }
 
+.tv-modal-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
 @keyframes tvModalPop {
-  0% { opacity: 0; transform: scale(0.88); }
+  0% { opacity: 0; transform: scale(0.9); }
   100% { opacity: 1; transform: scale(1); }
 }
 
@@ -1087,53 +1606,45 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   5. MULTI-FORM-FACTOR BREAKPOINTS (PC 16:9, TABLET H/V, DUO/FOLD, MOBILE H/V)
+   7. MULTI-FORM-FACTOR BREAKPOINTS (PC 16:9, TABLET H/V, DUO/FOLD, MOBILE H/V)
    ========================================================================== */
 
-/* A. Full Screen PC / Classroom TV 16:9 (>= 1240px & tall enough for 4 rows) */
-@media (min-width: 1240px) and (min-height: 700px) {
-  #appRoot {
+/* A. Full Screen PC / Classroom TV 16:9 (>= 1240px & >= 680px tall) -> Exact 7 x 3 = 21 Grid */
+@media (min-width: 1240px) and (min-height: 680px) {
+  #appRoot.is-bigscreen-fit {
     height: 100dvh;
     overflow: hidden;
   }
-  .tv-overview-stage {
+  .tv-overview-stage,
+  .fac-lobby-outer {
     min-height: 0;
     overflow: hidden;
   }
   .tv-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    grid-template-rows: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
   }
 }
 
-/* B. Tablet Horizontal / Compact Laptop (920px – 1239px) -> 4 x 6 Grid */
-@media (min-width: 920px) and (max-width: 1239px) {
-  .tv-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .tv-tile-nick {
-    font-size: 17px;
-  }
-  .tv-tile-sub, .tv-tile-words {
-    font-size: 13.5px;
-  }
-}
-
-/* C. Tablet Vertical (iPad Portrait) & Foldable Unfolded (640px – 919px) -> 3 x 8 Grid */
-@media (min-width: 640px) and (max-width: 919px) {
+/* B. Tablet Horizontal & Tablet Vertical (640px – 1239px) -> Exact 3 x 7 = 21 Grid */
+@media (min-width: 640px) and (max-width: 1239px) {
   .tv-topbar {
-    border-radius: 22px;
+    border-radius: 24px;
     padding: 8px 12px;
   }
   .tv-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .tv-tile-nick {
-    font-size: 16.5px;
+  .fac-lobby-card {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
   }
-  .tv-tile-sub, .tv-tile-words {
-    font-size: 13px;
+  .fac-checkin-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
+}
+
+@media (min-width: 640px) and (max-width: 919px) {
   .zm-hero-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1142,22 +1653,35 @@ button, input, select, textarea {
   .zm-big-question {
     font-size: clamp(20px, 3.2vw, 27px);
   }
+  .fac-checkin-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
-/* D. Dual-Screen / Surface Duo / Foldable Spanning Crease Protection */
+/* C. Dual-Screen / Surface Duo / Foldable Spanning Crease Protection (1 + 2x10 = 21) */
 @media (horizontal-viewport-segments: 2) {
   .tv-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 36px;
+  }
+  .tv-grid > .tv-tile:first-child {
+    grid-column: 1 / -1;
   }
   .zm-hero-header {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 36px;
   }
+  .ph-shell {
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 36px;
+    align-items: start;
+  }
 }
 
-/* E. Mobile Vertical (<= 639px Portrait) -> Optimal 2-Column Readable Cards */
+/* D. Mobile Vertical (<= 639px Portrait) -> 1 Full-Width Advisor + 2x10 Students = 21! */
 @media (max-width: 639px) and (orientation: portrait) {
   .tv-topbar-wrap {
     padding: 8px 10px 4px;
@@ -1186,31 +1710,23 @@ button, input, select, textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 9px;
   }
-  .tv-tile {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 10px;
-    gap: 8px;
-    border-radius: 18px;
-  }
-  .tv-tile-avatar-wrap {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 4 / 3.6;
-    border-radius: 13px;
-  }
-  .tv-tile-body {
-    width: 100%;
+  .tv-grid > .tv-tile:first-child {
+    grid-column: 1 / -1;
   }
   .tv-tile-nick {
     font-size: 16px;
   }
-  .tv-tile-sub {
-    font-size: 12.5px;
-  }
+  .tv-tile-sub,
   .tv-tile-words {
     font-size: 12.5px;
-    -webkit-line-clamp: 2;
+  }
+  .fac-lobby-card {
+    grid-template-columns: 1fr;
+    padding: 14px;
+    gap: 14px;
+  }
+  .fac-checkin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .tv-zoom-stage-outer {
     padding: 4px 8px calc(10px + var(--kb-inset));
@@ -1244,14 +1760,17 @@ button, input, select, textarea {
   }
   .zm-cloud-body {
     padding: 4px 10px;
-    min-height: 220px;
+    min-height: 210px;
   }
-  .zm-composer-dock {
+  .zm-composer-dock, .zm-fac-footer {
     padding: 8px 10px 10px;
+  }
+  .id-picker-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-/* F. Mobile Horizontal (Landscape Phone <= 932px wide & <= 500px tall) */
+/* E. Mobile Horizontal (Landscape Phone <= 500px tall) */
 @media (max-height: 500px) and (orientation: landscape) {
   .tv-topbar-wrap {
     padding: 4px 10px 2px;
@@ -1276,16 +1795,16 @@ button, input, select, textarea {
     font-size: 12px;
   }
   .tv-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
   .tv-tile {
     padding: 7px 9px;
-    gap: 8px;
+    gap: 6px;
   }
   .tv-tile-avatar-wrap {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     border-radius: 10px;
   }
   .tv-tile-nick {
@@ -1295,51 +1814,43 @@ button, input, select, textarea {
     font-size: 11.5px;
     -webkit-line-clamp: 1;
   }
-  .zm-toolbar {
-    padding: 6px 12px 2px;
+  .ph-shell {
+    max-width: 860px;
+    padding: 4px 12px 12px;
   }
-  .zm-hero-header {
-    padding: 2px 14px 4px;
+  .ph-card {
+    padding: 12px 16px;
     gap: 10px;
   }
-  .zm-person-portrait-card {
-    padding: 4px 10px 4px 4px;
+  .ph-inputs-stack {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
-  .zm-person-portrait-card img {
-    width: 44px;
-    height: 44px;
+  .ph-answer-input {
+    height: 40px;
+    font-size: 16px;
   }
-  .zm-big-question {
-    font-size: 16.5px;
-    line-height: 1.25;
-  }
-  .zm-cloud-body {
-    min-height: 130px;
-    padding: 2px 12px;
-  }
-  .zm-composer-dock {
-    padding: 5px 12px 6px;
-  }
-  .zm-word-input, .zm-send-btn {
-    height: 36px;
+  .ph-submit-btn {
+    height: 42px;
   }
 }
 
-/* Print Friendly Overview Yearbook */
+/* Print Friendly Overview Yearbook (21 Members) */
 @media print {
   html, body, #appRoot {
     height: auto !important;
     overflow: visible !important;
     background: #fff !important;
   }
-  .tv-topbar-wrap, .zm-composer-dock, .zm-toolbar {
+  .tv-topbar-wrap, .zm-composer-dock, .zm-fac-footer, .zm-toolbar {
     display: none !important;
   }
   .tv-overview-stage {
     padding: 0 !important;
   }
   .tv-grid {
-    grid-template-columns: repeat(4, 1fr) !important;
+    grid-template-columns: repeat(3, 1fr) !important;
     gap: 10px !important;
   }
   .tv-tile {
