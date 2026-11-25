@@ -57,9 +57,9 @@
 
   const QUICK_EMOJIS = ["🙏", "🌱", "✨", "🔥", "🩺", "🤝", "💯", "🥰", "😎", "🎸", "🍜", "💪", "🧗‍♀️", "✌️"];
 
-  /* Pre-Overview Thematic Slides (Slide 2 -> Slide 3 -> Slide 4) */
-  const PRE_OVERVIEW_IDS = [TOPIC_HOPES_ID, TOPIC_FEARS_ID, TOPIC_HF_BOARD_ID];
-  /* Post-Overview Member & Trip Slides (Slide 6+) */
+  /* Pre-Overview Thematic Slide: ONLY the single unified Hopes & Fears Affinity Diagram Slide (Slide 2)! */
+  const PRE_OVERVIEW_IDS = [TOPIC_HF_BOARD_ID];
+  /* Post-Overview Member & Trip Slides */
   const POST_OVERVIEW_IDS = MEMBERS.map((m) => m.uid).concat([TOPIC_TRIP_ID]);
 
   const TARGET_LIST = [
@@ -137,188 +137,140 @@
   ];
 
   /* ==========================================================================
-     DYNAMIC THEMATIC ANALYSIS & CONCEPTUALIZATION ENGINE (HOPES & FEARS)
-     - Categorizes, conceptualizes, and dynamically evolves Emerging Theme names
-       as inputs grow in real time!
+     UNIFIED CROSS-POLARITY AFFINITY DIAGRAM & CONCEPTUALIZATION ENGINE
+     - Clusters BOTH Green Hope Post-its AND Pink Fear Post-its TOGETHER inside
+       each substantive Emerging Theme (matching real facilitation flipchart wall!)
+     - Dynamically evolves Emerging Theme titles & synthesis as inputs arrive!
      ========================================================================== */
-  const THEMATIC_SCHEMA = {
-    hopes: [
-      {
-        id: "h_community_sdh",
-        icon: "🏡",
-        facets: {
-          life: ["ชุมชน", "ชาวบ้าน", "วิถี", "วัฒนธรรม", "ผู้ไท", "อีสาน", "กาฬสินธุ์", "กุฉินารายณ์", "พื้นที่จริง", "ลงพื้นที่", "เยี่ยมบ้าน", "home visit", "อสม", "ชนบท", "นอกห้องเรียน"],
-          sdh: ["คนไข้", "ผู้ป่วย", "บริบท", "สังคม", "sdh", "ปัจจัยกำหนด", "องค์รวม", "holistic", "เข้าใจคน", "ชีวิตจริง", "ความเป็นอยู่"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.life > 0 && fCounts.sdh > 0) return "เข้าใจสุขภาวะชุมชนจริงเชื่อมโยงบริบทสังคม (SDH)";
-          if (fCounts.sdh > 0) return "เข้าใจผู้ป่วยแบบองค์รวมและปัจจัยทางสังคม";
-          return "สัมผัสวิถีชีวิตชุมชนจริงนอกห้องเรียน";
-        },
-        conceptFn(fCounts) {
-          if (fCounts.life > 0 && fCounts.sdh > 0) return "การเรียนรู้จากพื้นที่จริงเพื่อเชื่อมวิถีชุมชนเข้ากับปัจจัยกำหนดสุขภาพของผู้ป่วย";
-          return "การเปิดมุมมองการเรียนรู้นอกรั้วโรงเรียนแพทย์สู่บริบทชุมชนจริง";
-        }
+  const UNIFIED_THEMATIC_DOMAINS = [
+    {
+      id: "u_community_comm_sdh",
+      icon: "🏡",
+      facets: {
+        life: ["ชุมชน", "ชาวบ้าน", "วิถี", "วัฒนธรรม", "ผู้ไท", "อีสาน", "กาฬสินธุ์", "กุฉินารายณ์", "พื้นที่จริง", "ลงพื้นที่", "เยี่ยมบ้าน", "home visit", "อสม", "ชนบท", "นอกห้องเรียน"],
+        sdh: ["คนไข้", "ผู้ป่วย", "บริบท", "สังคม", "sdh", "ปัจจัยกำหนด", "องค์รวม", "holistic", "เข้าใจคน", "ชีวิตจริง", "ความเป็นอยู่"],
+        comm: ["ภาษา", "ฟังไม่ออก", "พูดไม่รู้เรื่อง", "สำเนียง", "สื่อสาร", "สัมภาษณ์", "พูดคุย", "คุยกับชาวบ้าน", "ถามไม่ถูก", "เดดแอร์", "เกรงใจ", "รบกวน", "ไม่ให้ความร่วมมือ", "ทำตัวไม่ถูก", "ตอบชาวบ้าน"]
       },
-      {
-        id: "h_hss_role",
-        icon: "🏥",
-        facets: {
-          sys: ["ระบบสุขภาพ", "ระบบบริการ", "ปฐมภูมิ", "รพ.สต", "รพร", "รพช", "โรงพยาบาลชุมชน", "บัตรทอง", "uhc", "นโยบาย", "เชิงระบบ", "system", "cld", "ส่งต่อ", "อำเภอ"],
-          role: ["หมอชุมชน", "แพทย์ชุมชน", "บทบาทแพทย์", "แรงบันดาลใจ", "ความเป็นหมอ", "สหวิชาชีพ", "ผู้นำ", "change agent", "อนาคต"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.sys > 0 && fCounts.role > 0) return "เชื่อมโยงระบบสุขภาพอำเภอสู่บทบาทแพทย์ชุมชน";
-          if (fCounts.role > 0) return "ค้นพบบทบาทและแรงบันดาลใจของการเป็นแพทย์ชุมชน";
-          return "เห็นภาพจริงของระบบบริการปฐมภูมิและการคิดเชิงระบบ";
-        },
-        conceptFn() {
-          return "การเข้าใจกลไกระบบบริการสุขภาพระดับอำเภอและบทบาททีมสหวิชาชีพ";
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) {
+          if (f.comm > 0 && (f.life > 0 || f.sdh > 0)) return "เรียนรู้วิถีชุมชน-บริบทผู้ป่วย & โจทย์การสื่อสารภาษาถิ่น";
+          return "การเข้าใจสุขภาวะชุมชนจริงและการวางบทบาทหน้างาน";
         }
+        if (fCnt > 0 && hCnt === 0) return "การสื่อสารภาษาถิ่นและความเกรงใจในการเข้าถึงชุมชน";
+        if (f.life > 0 && f.sdh > 0) return "เข้าใจสุขภาวะชุมชนจริงเชื่อมโยงบริบทสังคม (SDH)";
+        return "สัมผัสวิถีชีวิตชุมชนและผู้ป่วยจริงนอกห้องเรียน";
       },
-      {
-        id: "h_epi_skills",
-        icon: "📊",
-        facets: {
-          epi: ["วิจัย", "สำรวจ", "survey", "ระบาด", "epi", "สถิติ", "spss", "ข้อมูล", "แบบสอบถาม", "วิเคราะห์", "เปเปอร์", "ebm", "โครงการ"],
-          comm: ["สื่อสาร", "สัมภาษณ์", "พูดคุย", "ตั้งคำถาม", "แก้ปัญหา", "ประยุกต์", "ใช้ได้จริง", "ทักษะ", "ปฏิบัติ"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.epi > 0 && fCounts.comm > 0) return "ฝึกวิจัยระบาดวิทยาควบคู่ทักษะสื่อสารและแก้ปัญหาจริง";
-          if (fCounts.comm > 0) return "พัฒนาทักษะสื่อสารชุมชนและการประยุกต์ใช้ความรู้";
-          return "ทำวิจัยสำรวจสุขภาพและระบาดวิทยาที่เกิดประโยชน์จริง";
-        },
-        conceptFn() {
-          return "การแปรความรู้ระบาดวิทยาและการสื่อสารสู่การปฏิบัติงานในพื้นที่";
-        }
-      },
-      {
-        id: "h_team_memory",
-        icon: "🚂",
-        facets: {
-          bond: ["เพื่อน", "สนิท", "มิตรภาพ", "รู้จัก", "กลุ่ม", "ทีม", "team", "สามัคคี", "ช่วยเหลือ", "kuchi", "พี่สมาร์ท", "อาจารย์", "ครอบครัว"],
-          joy: ["สนุก", "มีความสุข", "ประสบการณ์ใหม่", "รถไฟ", "เที่ยว", "อาหาร", "อร่อย", "ส้มตำ", "หมอลำ", "ความทรงจำ", "ประทับใจ", "เปิดโลก", "ม่วน"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.bond > 0 && fCounts.joy > 0) return "ถักทอมิตรภาพ Kuchi Gang และความทรงจำทริปรถไฟ";
-          if (fCounts.bond > 0) return "สร้างความสัมพันธ์ในทีมและมิตรภาพที่อบอุ่น";
-          return "เปิดโลกประสบการณ์ใหม่และความสุขในการเดินทางเรียนรู้";
-        },
-        conceptFn() {
-          return "พลังความสัมพันธ์ของสมาชิกในกลุ่มและประสบการณ์ร่วมระหว่างออกภาคสนาม";
-        }
-      },
-      {
-        id: "h_wellbeing_growth",
-        icon: "🌿",
-        facets: {
-          rest: ["พักผ่อน", "นอน", "ไม่เครียด", "ชิล", "ฮีลใจ", "balance", "สมดุล", "สบายใจ", "ราบรื่น", "ผ่าน", "เกรด", "คะแนน"],
-          grow: ["เติบโต", "มั่นใจ", "ปลอดภัย", "กล้า", "สะท้อนคิด", "เข้าใจตัวเอง", "มุมมองใหม่"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.rest > 0 && fCounts.grow > 0) return "พื้นที่เรียนรู้ที่ปลอดภัย สมดุล และเติมพลังใจ";
-          if (fCounts.grow > 0) return "การเติบโตภายในและการสะท้อนคิดตัวตนวิชาชีพ";
-          return "สมดุลการเรียนรู้ การพักผ่อน และการฮีลใจ";
-        },
-        conceptFn() {
-          return "สุขภาวะของผู้เรียน บรรยากาศที่เกื้อกูล และการเติบโตเชิงวิชาชีพ";
-        }
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `เชื่อมความตั้งใจเข้าใจบริบทชีวิตชาวบ้าน (Hope ${hCnt}) คู่กับการเตรียมพร้อมด้านภาษาและการสื่อสาร (Fear ${fCnt})`;
+        return "การเรียนรู้บริบทสังคม วัฒนธรรมผู้ไท/อีสาน และการสื่อสารกับผู้ป่วยในชุมชนจริง";
       }
-    ],
-    fears: [
-      {
-        id: "f_workload_eval",
-        icon: "⏰",
-        facets: {
-          load: ["งานเยอะ", "งานหนัก", "รายงาน", "ปั่นงาน", "เดดไลน์", "deadline", "เวลาไม่พอ", "นอนดึก", "อดนอน", "เหนื่อย", "ล้า", "สไลด์", "srn", "ตื่นเช้า", "ภาระงาน"],
-          eval: ["สอบ", "คะแนน", "เกรด", "ตก", "ไม่ผ่าน", "พรีเซนต์", "นำเสนอ", "ตอบคำถาม", "โดนถาม", "ประเมิน", "กดดัน"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.load > 0 && fCounts.eval > 0) return "ความตึงมือด้านภาระงาน เวลาพักผ่อน และการประเมินผล";
-          if (fCounts.eval > 0) return "ความกังวลต่อการสอบ การนำเสนอ และเกณฑ์ประเมิน";
-          return "ภาระงาน-รายงานหนาแน่นและการจัดสรรเวลาพักผ่อน";
-        },
-        conceptFn() {
-          return "ความสมดุลระหว่างปริมาณชิ้นงาน กำหนดส่ง การนำเสนอ และเวลาพัก";
-        }
+    },
+    {
+      id: "u_health_systems_role",
+      icon: "🏥",
+      facets: {
+        sys: ["ระบบสุขภาพ", "ระบบบริการ", "ปฐมภูมิ", "รพ.สต", "รพร", "รพช", "โรงพยาบาลชุมชน", "บัตรทอง", "uhc", "นโยบาย", "เชิงระบบ", "system", "cld", "ส่งต่อ", "อำเภอ", "เศรษฐศาสตร์"],
+        role: ["หมอชุมชน", "แพทย์ชุมชน", "บทบาทแพทย์", "แรงบันดาลใจ", "ความเป็นหมอ", "สหวิชาชีพ", "ผู้นำ", "change agent", "อนาคต"],
+        complex: ["เนื้อหายาก", "ทฤษฎี", "จับประเด็น", "งง", "ตามไม่ทัน", "ซับซ้อน", "สังเคราะห์", "ความรู้ไม่แน่น"]
       },
-      {
-        id: "f_epi_complexity",
-        icon: "📐",
-        facets: {
-          stat: ["สถิติ", "spss", "วิเคราะห์ข้อมูล", "คำนวณ", "ตัวเลข", "โค้ด", "แบบสอบถาม", "sample", "ระบาด", "epi", "เก็บข้อมูล", "กลุ่มตัวอย่าง", "วิจัย"],
-          concept: ["เนื้อหายาก", "ทฤษฎี", "จับประเด็น", "งง", "ตามไม่ทัน", "cld", "ซับซ้อน", "เศรษฐศาสตร์", "สังเคราะห์", "ความรู้ไม่แน่น"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.stat > 0 && fCounts.concept > 0) return "ความท้าทายด้านสถิติวิจัยและการสังเคราะห์กรอบคิดเชิงระบบ";
-          if (fCounts.concept > 0) return "ความซับซ้อนของกรอบคิดทฤษฎีและการจับประเด็นสำคัญ";
-          return "ความกังวลในการเก็บข้อมูลสำรวจและวิเคราะห์สถิติ (SPSS)";
-        },
-        conceptFn() {
-          return "ความมั่นใจเชิงระเบียบวิธีวิจัยระบาดวิทยาและการเชื่อมโยงทฤษฎีสู่พื้นที่";
-        }
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return "ระบบบริการปฐมภูมิ-บทบาทแพทย์ รพช. & การสังเคราะห์กรอบคิดเชิงระบบ";
+        if (fCnt > 0 && hCnt === 0) return "ความซับซ้อนของกรอบคิดทฤษฎีและการคิดเชิงระบบสุขภาพ";
+        if (f.role > 0) return "ระบบสุขภาพปฐมภูมิและแรงบันดาลใจของการเป็นแพทย์ชุมชน";
+        return "เห็นภาพจริงของระบบบริการสุขภาพระดับอำเภอ (DHS)";
       },
-      {
-        id: "f_comm_culture",
-        icon: "🗣️",
-        facets: {
-          lang: ["ภาษา", "อีสาน", "ผู้ไท", "ฟังไม่ออก", "พูดไม่รู้เรื่อง", "สำเนียง", "สื่อสาร", "สัมภาษณ์", "คุยกับชาวบ้าน", "ถามไม่ถูก", "เดดแอร์"],
-          trust: ["เกรงใจ", "รบกวนชาวบ้าน", "ไม่ให้ความร่วมมือ", "ทำตัวไม่ถูก", "ตอบชาวบ้านไม่ได้", "แนะนำผิด", "ทำพลาด"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.lang > 0 && fCounts.trust > 0) return "กำแพงภาษาถิ่นและความเกรงใจในการสื่อสารกับชุมชน";
-          if (fCounts.trust > 0) return "ความไม่มั่นใจในบทบาทและการสร้างความไว้วางใจกับชาวบ้าน";
-          return "อุปสรรคด้านภาษาถิ่นและทักษะการสัมภาษณ์เชิงลึก";
-        },
-        conceptFn() {
-          return "การสื่อสารข้ามวัฒนธรรม ภาษาถิ่น และมารยาทการเรียนรู้ร่วมกับชุมชน";
-        }
-      },
-      {
-        id: "f_travel_health",
-        icon: "🧳",
-        facets: {
-          living: ["รถไฟ", "นอนรถไฟ", "เดินทาง", "ที่พัก", "ห้องน้ำ", "แมลง", "จิ้งจก", "ยุง", "หนาว", "ร้อน", "อากาศ", "แปลกที่", "นอนไม่หลับ", "คิดถึงบ้าน"],
-          health: ["อาหาร", "ท้องเสีย", "ป่วย", "ไม่สบาย", "แพ้", "โรค", "ความปลอดภัย", "อุบัติเหตุ", "ของหาย", "หลง"]
-        },
-        nameFn(fCounts) {
-          if (fCounts.living > 0 && fCounts.health > 0) return "การปรับตัวด้านที่พัก การเดินทาง และสุขภาพกายระหว่างทริป";
-          if (fCounts.health > 0) return "ความกังวลด้านสุขภาพ อาหาร และความปลอดภัยต่างถิ่น";
-          return "การเดินทางไกลด้วยรถไฟและการปรับตัวกับสภาพแวดล้อมใหม่";
-        },
-        conceptFn() {
-          return "ความพร้อมทางกายภาพ ความเป็นอยู่ และความปลอดภัยตลอด 10 วันในพื้นที่";
-        }
-      },
-      {
-        id: "f_team_dynamics",
-        icon: "🤝",
-        facets: {
-          team: ["งานกลุ่ม", "แบ่งงาน", "ความเห็นไม่ตรง", "ประสานงาน", "เกรงใจเพื่อน", "ภาระเพื่อน", "ตามเพื่อน", "คนเยอะ", "สื่อสารในกลุ่ม", "ขัดแย้ง", "ไม่สนิท"]
-        },
-        nameFn() {
-          return "การประสานงาน แบ่งบทบาท และจังหวะการทำงานในกลุ่มใหญ่";
-        },
-        conceptFn() {
-          return "กระบวนการทำงานร่วมกันของสมาชิก 20 คนให้ราบรื่นและเกื้อกูลกัน";
-        }
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `มุ่งเห็นการทำงานจริงของ รพร.–รพ.สต. (Hope ${hCnt}) พร้อมคลี่คลายความซับซ้อนของกรอบคิดทฤษฎี (Fear ${fCnt})`;
+        return "การเชื่อมโยงกลไกระบบสุขภาพอำเภอ ทีมสหวิชาชีพ และกรอบคิดเชิงระบบ";
       }
-    ]
-  };
+    },
+    {
+      id: "u_epi_survey_stats",
+      icon: "📊",
+      facets: {
+        epi: ["วิจัย", "สำรวจ", "survey", "ระบาด", "epi", "แบบสอบถาม", "โครงการ", "เก็บข้อมูล", "กลุ่มตัวอย่าง", "sample", "เปเปอร์", "ebm", "ประยุกต์", "ใช้ได้จริง", "แก้ปัญหา"],
+        stat: ["สถิติ", "spss", "วิเคราะห์ข้อมูล", "คำนวณ", "ตัวเลข", "โค้ด", "ไม่ครบ"]
+      },
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return "วิจัยสำรวจระบาดวิทยาที่ใช้ได้จริง & ความพร้อมด้านสถิติ (SPSS)";
+        if (fCnt > 0 && hCnt === 0) return "ความท้าทายในการเก็บข้อมูลสำรวจและวิเคราะห์สถิติวิจัย";
+        return "ฝึกทักษะวิจัยสำรวจสุขภาพชุมชนและระบาดวิทยาเชิงปฏิบัติ";
+      },
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `อยากทำสำรวจสุขภาพที่มีคุณค่าต่อพื้นที่ (Hope ${hCnt}) ควบคู่การเสริมความมั่นใจเรื่องการเก็บข้อมูลและ SPSS (Fear ${fCnt})`;
+        return "กระบวนการออกแบบเครื่องมือ เก็บข้อมูลภาคสนาม และวิเคราะห์สถิติระบาดวิทยา";
+      }
+    },
+    {
+      id: "u_teamwork_bonding",
+      icon: "🤝",
+      facets: {
+        bond: ["เพื่อน", "สนิท", "มิตรภาพ", "รู้จัก", "กลุ่ม", "ทีม", "team", "สามัคคี", "ช่วยเหลือ", "kuchi", "พี่สมาร์ท", "อาจารย์", "ครอบครัว", "ปลอดภัย", "กล้า"],
+        coord: ["งานกลุ่ม", "แบ่งงาน", "ความเห็นไม่ตรง", "ประสานงาน", "เกรงใจเพื่อน", "ภาระ", "ตามเพื่อน", "คนเยอะ", "ขัดแย้ง", "ไม่สนิท"]
+      },
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return "มิตรภาพทีม Kuchi Gang & การประสานแบ่งบทบาทในกลุ่มใหญ่";
+        if (fCnt > 0 && hCnt === 0) return "การประสานงาน แบ่งบทบาท และจังหวะการทำงานในกลุ่มใหญ่";
+        return "สร้างมิตรภาพความผูกพันและพื้นที่ปลอดภัยของครอบครัว Kuchi Gang";
+      },
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `พลังความอบอุ่นของเพื่อน 20 คน (Hope ${hCnt}) คู่กับการจัดระบบสื่อสารและแบ่งงานที่ชัดเจน (Fear ${fCnt})`;
+        return "ความสัมพันธ์ ความเกื้อกูลกัน และกระบวนการทำงานเป็นทีมของสมาชิกทั้งกลุ่ม";
+      }
+    },
+    {
+      id: "u_workload_balance_eval",
+      icon: "⏰",
+      facets: {
+        balance: ["พักผ่อน", "ชิล", "ฮีลใจ", "balance", "สมดุล", "สบายใจ", "ไม่เครียด", "ราบรื่น", "เติบโต", "สะท้อนคิด"],
+        load: ["งานเยอะ", "งานหนัก", "รายงาน", "ปั่นงาน", "เดดไลน์", "deadline", "เวลาไม่พอ", "นอนดึก", "อดนอน", "เหนื่อย", "ล้า", "สไลด์", "srn", "ตื่นเช้า", "ภาระงาน"],
+        eval: ["สอบ", "คะแนน", "เกรด", "ตก", "ไม่ผ่าน", "พรีเซนต์", "นำเสนอ", "ตอบคำถาม", "โดนถาม", "ประเมิน", "กดดัน"]
+      },
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return "สมดุลภาระงาน-เวลาพักผ่อน & ความมั่นใจในการนำเสนอประเมินผล";
+        if (fCnt > 0 && hCnt === 0) {
+          if (f.eval > 0 && f.load > 0) return "ภาระงาน รายงาน เวลาพักผ่อน และความกดดันในการประเมิน";
+          if (f.eval > 0) return "ความกังวลต่อการสอบ การนำเสนอ และเกณฑ์การประเมิน";
+          return "ปริมาณภาระงานและการจัดสรรเวลาพักผ่อน";
+        }
+        return "สมดุลการเรียนรู้ เวลาพักผ่อน และการเติมพลังใจ";
+      },
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `ต้องการเรียนรู้แบบสมดุลและฮีลใจ (Hope ${hCnt}) ท่ามกลางโจทย์การบริหารเวลา รายงาน และการนำเสนอ (Fear ${fCnt})`;
+        return "การบริหารภาระงาน เวลาพักผ่อน สุขภาวะผู้เรียน และการวัดประเมินผลรายวิชา";
+      }
+    },
+    {
+      id: "u_journey_living_health",
+      icon: "🚂",
+      facets: {
+        joy: ["สนุก", "มีความสุข", "ประสบการณ์ใหม่", "เที่ยว", "อร่อย", "ส้มตำ", "หมอลำ", "ความทรงจำ", "ประทับใจ", "เปิดโลก", "ม่วน"],
+        living: ["รถไฟ", "นอนรถไฟ", "เดินทาง", "ที่พัก", "ห้องน้ำ", "แมลง", "จิ้งจก", "ยุง", "หนาว", "ร้อน", "อากาศ", "แปลกที่", "นอนไม่หลับ", "คิดถึงบ้าน", "อาหาร", "ท้องเสีย", "ป่วย", "ไม่สบาย", "แพ้", "ความปลอดภัย", "อุบัติเหตุ", "ของหาย"]
+      },
+      nameFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return "ประสบการณ์ทริปรถไฟสายอีสาน & การปรับตัวด้านที่พัก-สุขภาพ";
+        if (fCnt > 0 && hCnt === 0) return "การเดินทางไกล ที่พัก สุขภาพกาย และการปรับตัวต่างถิ่น";
+        return "เปิดโลกประสบการณ์ทริปรถไฟและความทรงจำดีๆ ที่กุฉินารายณ์";
+      },
+      conceptFn(f, hCnt, fCnt) {
+        if (hCnt > 0 && fCnt > 0) return `ความตื่นเต้นกับทริปรถไฟและอาหารอีสาน (Hope ${hCnt}) คู่กับการเตรียมพร้อมเรื่องการนอน สุขภาพ และที่พัก (Fear ${fCnt})`;
+        return "ประสบการณ์การเดินทาง ความเป็นอยู่ สุขภาพกาย และความปลอดภัยตลอด 10 วันภาคสนาม";
+      }
+    }
+  ];
 
-  function classifySingleTextToRule(rawText, polarity) {
-    const rules = THEMATIC_SCHEMA[polarity === "fears" ? "fears" : "hopes"];
+  function classifyTextToUnifiedDomain(rawText) {
     const low = String(rawText || "").toLowerCase();
-    let bestRule = null;
+    let bestDomain = null;
     let bestScore = 0;
     let bestFacets = {};
 
-    rules.forEach((rule) => {
+    UNIFIED_THEMATIC_DOMAINS.forEach((dom) => {
       let score = 0;
       const fHit = {};
-      Object.keys(rule.facets).forEach((fKey) => {
+      Object.keys(dom.facets).forEach((fKey) => {
         fHit[fKey] = 0;
-        rule.facets[fKey].forEach((kw) => {
+        dom.facets[fKey].forEach((kw) => {
           if (low.includes(kw.toLowerCase())) {
             score += kw.length >= 5 ? 2 : 1.2;
             fHit[fKey] += 1;
@@ -327,12 +279,12 @@
       });
       if (score > bestScore) {
         bestScore = score;
-        bestRule = rule;
+        bestDomain = dom;
         bestFacets = fHit;
       }
     });
 
-    return bestScore > 0 ? { rule: bestRule, facetHits: bestFacets } : null;
+    return bestScore > 0 ? { domain: bestDomain, facetHits: bestFacets } : null;
   }
 
   function extractKeyStem(text) {
@@ -345,46 +297,57 @@
     return parts.reduce((a, b) => (b.length > a.length ? b : a), parts[0]).slice(0, 16);
   }
 
-  /* Synthesize Dynamic Emerging Themes from aggregated items! */
-  function synthesizeDynamicThemes(aggItems, polarity) {
-    const pol = polarity === "fears" ? "fears" : "hopes";
-    if (!aggItems || !aggItems.length) {
-      return { clusters: [], totalVotes: 0, summaryLine: "" };
+  /* Synthesize Unified Affinity Wall where each Emerging Theme holds BOTH Hope & Fear Post-its! */
+  function synthesizeUnifiedAffinityWall(hopesItems, fearsItems) {
+    const taggedAll = []
+      .concat((hopesItems || []).map((it) => Object.assign({}, it, { polarity: "hopes" })))
+      .concat((fearsItems || []).map((it) => Object.assign({}, it, { polarity: "fears" })));
+
+    if (!taggedAll.length) {
+      return { clusters: [], totalHopes: 0, totalFears: 0, totalVotes: 0, summaryLine: "" };
     }
 
-    const totalVotes = aggItems.reduce((s, x) => s + (x.count || 1), 0);
+    const totalHopes = (hopesItems || []).reduce((s, x) => s + (x.count || 1), 0);
+    const totalFears = (fearsItems || []).reduce((s, x) => s + (x.count || 1), 0);
+    const totalVotes = totalHopes + totalFears;
+
     const buckets = new Map();
     const unmatched = [];
 
-    aggItems.forEach((item) => {
-      const hit = classifySingleTextToRule(item.text, pol);
-      if (hit && hit.rule) {
-        if (!buckets.has(hit.rule.id)) {
-          buckets.set(hit.rule.id, {
-            id: hit.rule.id,
-            icon: hit.rule.icon,
-            rule: hit.rule,
+    taggedAll.forEach((item) => {
+      const hit = classifyTextToUnifiedDomain(item.text);
+      if (hit && hit.domain) {
+        if (!buckets.has(hit.domain.id)) {
+          buckets.set(hit.domain.id, {
+            id: hit.domain.id,
+            icon: hit.domain.icon,
+            domain: hit.domain,
             facetTotals: {},
             notes: [],
+            hopeSum: 0,
+            fearSum: 0,
             voteSum: 0
           });
         }
-        const b = buckets.get(hit.rule.id);
+        const b = buckets.get(hit.domain.id);
         Object.keys(hit.facetHits).forEach((fk) => {
           b.facetTotals[fk] = (b.facetTotals[fk] || 0) + hit.facetHits[fk] * (item.count || 1);
         });
         b.notes.push(item);
-        b.voteSum += item.count || 1;
+        const c = item.count || 1;
+        if (item.polarity === "fears") b.fearSum += c;
+        else b.hopeSum += c;
+        b.voteSum += c;
       } else {
         unmatched.push(item);
       }
     });
 
-    // Stage 2: Inductive Token-Overlap Clustering for Emergent Unmatched Items
+    // Stage 2: Cross-Polarity Inductive Clustering for Novel Items (Hopes & Fears with shared stems cluster together!)
     const emergentGroups = [];
     unmatched.forEach((item) => {
       const low = item.text.toLowerCase();
-      // First check if it shares >=4-char substring with an existing matched bucket note
+      const c = item.count || 1;
       let attachedBucket = null;
       buckets.forEach((b) => {
         if (attachedBucket) return;
@@ -398,23 +361,28 @@
       });
       if (attachedBucket) {
         attachedBucket.notes.push(item);
-        attachedBucket.voteSum += item.count || 1;
+        if (item.polarity === "fears") attachedBucket.fearSum += c;
+        else attachedBucket.hopeSum += c;
+        attachedBucket.voteSum += c;
         return;
       }
 
-      // Otherwise cluster among unmatched items by shared stem
       const myStem = extractKeyStem(item.text);
       let foundGrp = emergentGroups.find(
         (g) => (g.stem && low.includes(g.stem.toLowerCase())) || (myStem.length >= 3 && g.stem.toLowerCase().includes(myStem.toLowerCase()))
       );
       if (foundGrp) {
         foundGrp.notes.push(item);
-        foundGrp.voteSum += item.count || 1;
+        if (item.polarity === "fears") foundGrp.fearSum += c;
+        else foundGrp.hopeSum += c;
+        foundGrp.voteSum += c;
       } else {
         emergentGroups.push({
           stem: myStem,
           notes: [item],
-          voteSum: item.count || 1
+          hopeSum: item.polarity === "hopes" ? c : 0,
+          fearSum: item.polarity === "fears" ? c : 0,
+          voteSum: c
         });
       }
     });
@@ -422,42 +390,41 @@
     const clusters = [];
 
     buckets.forEach((b) => {
-      const customKey = `${pol}:${b.id}`;
-      const autoTitle = b.rule.nameFn(b.facetTotals);
+      const customKey = `unified:${b.id}`;
+      const autoTitle = b.domain.nameFn(b.facetTotals, b.hopeSum, b.fearSum);
       const customTitle = state.customThemeTitles.get(customKey);
+      // Interleave/sort notes nicely by count desc while keeping both green & pink visible together
+      const sortedNotes = b.notes.slice().sort((x, y) => (y.count || 1) - (x.count || 1));
       clusters.push({
         clusterKey: customKey,
-        polarity: pol,
         icon: b.icon,
         title: customTitle || autoTitle,
         autoTitle,
-        concept: b.rule.conceptFn(b.facetTotals),
-        notes: b.notes,
+        concept: b.domain.conceptFn(b.facetTotals, b.hopeSum, b.fearSum),
+        notes: sortedNotes,
+        hopeSum: b.hopeSum,
+        fearSum: b.fearSum,
         voteSum: b.voteSum,
         pct: Math.round((b.voteSum / Math.max(1, totalVotes)) * 100)
       });
     });
 
-    // Turn multi-item emergent groups into dedicated Emerging Themes, and merge singletons cleanly
     const singletons = [];
     emergentGroups.forEach((eg, idx) => {
       if (eg.notes.length >= 2 || eg.voteSum >= 2 || clusters.length === 0) {
-        const cKey = `${pol}:emergent_${idx}_${eg.stem}`;
+        const cKey = `unified:emergent_${idx}_${eg.stem}`;
         const customTitle = state.customThemeTitles.get(cKey);
         const autoTitle =
-          eg.stem && !isPureEmoji(eg.stem)
-            ? `ประเด็นร่วมเกิดใหม่: "${eg.stem}"`
-            : pol === "hopes"
-            ? "พลังบวกและความคาดหวังร่วมจากกลุ่ม"
-            : "ข้อกังวลเพิ่มเติมที่กลุ่มสะท้อนร่วมกัน";
+          eg.stem && !isPureEmoji(eg.stem) ? `ประเด็นร่วมเกิดใหม่: "${eg.stem}"` : "ประเด็นสะท้อนร่วมเพิ่มเติมจากกลุ่ม";
         clusters.push({
           clusterKey: cKey,
-          polarity: pol,
-          icon: pol === "hopes" ? "✨" : "💭",
+          icon: "💡",
           title: customTitle || autoTitle,
           autoTitle,
-          concept: "ประเด็นอุบัติใหม่ที่สังเคราะห์ขึ้นอัตโนมัติจากคำสำคัญซ้ำของผู้เรียน",
+          concept: `ประเด็นอุบัติใหม่จากผู้เรียน (Hope ${eg.hopeSum} · Fear ${eg.fearSum})`,
           notes: eg.notes,
+          hopeSum: eg.hopeSum,
+          fearSum: eg.fearSum,
           voteSum: eg.voteSum,
           pct: Math.round((eg.voteSum / Math.max(1, totalVotes)) * 100)
         });
@@ -467,24 +434,24 @@
     });
 
     if (singletons.length > 0) {
-      const sSum = singletons.reduce((s, n) => s + (n.count || 1), 0);
-      const cKey = `${pol}:open_emerging`;
+      const hS = singletons.filter((n) => n.polarity === "hopes").reduce((s, n) => s + (n.count || 1), 0);
+      const fS = singletons.filter((n) => n.polarity === "fears").reduce((s, n) => s + (n.count || 1), 0);
+      const sSum = hS + fS;
+      const cKey = "unified:open_emerging";
       const customTitle = state.customThemeTitles.get(cKey);
-      const topSample = singletons[0].text.slice(0, 18);
       const autoTitle =
         singletons.length === 1
-          ? `ประเด็นเฉพาะบุคคล: "${topSample}"`
-          : pol === "hopes"
-          ? "มุมมองความหวังและเป้าหมายเฉพาะบุคคลเพิ่มเติม"
-          : "ข้อห่วงใยและประเด็นเฝ้าระวังเฉพาะจุดเพิ่มเติม";
+          ? `มุมมองตั้งต้น: "${singletons[0].text.slice(0, 18)}"`
+          : "ประเด็นความหวังและข้อห่วงใยเฉพาะจุดเพิ่มเติม";
       clusters.push({
         clusterKey: cKey,
-        polarity: pol,
-        icon: pol === "hopes" ? "🌱" : "📌",
+        icon: "📌",
         title: customTitle || autoTitle,
         autoTitle,
-        concept: "ประเด็นหลากหลายที่รอเชื่อมโยงเพิ่มเติมเมื่อมีข้อมูลเข้ามาเพิ่ม",
+        concept: `รวบรวมมุมมองเฉพาะบุคคลที่รอเชื่อมโยงเพิ่มเติม (Hope ${hS} · Fear ${fS})`,
         notes: singletons,
+        hopeSum: hS,
+        fearSum: fS,
         voteSum: sSum,
         pct: Math.round((sSum / Math.max(1, totalVotes)) * 100)
       });
@@ -495,26 +462,26 @@
     const topNames = clusters
       .slice(0, 2)
       .map((c) => `"${c.title}" (${c.pct}%)`)
-      .join(" และ ");
-    const summaryLine = `สังเคราะห์สดได้ ${clusters.length} Emerging Theme จาก ${totalVotes} Post-it — ประเด็นเด่น: ${topNames}`;
+      .join(" · ");
+    const summaryLine = `จัดกลุ่มสดได้ ${clusters.length} Emerging Themes (🌱 Hope ${totalHopes} แผ่น + 🌸 Fear ${totalFears} แผ่น) — แกนหลัก: ${topNames}`;
 
-    return { clusters, totalVotes, summaryLine };
+    return { clusters, totalHopes, totalFears, totalVotes, summaryLine };
   }
 
   function previewEmergingThemeForInput(rawText, polarity) {
     const clean = String(rawText || "").trim();
     if (!clean) {
       return polarity === "fears"
-        ? "พิมพ์ข้อความเพื่อดูการจัดหมวด Emerging Theme อัตโนมัติ (Post-it ชมพูอ่อน)"
-        : "พิมพ์ข้อความเพื่อดูการจัดหมวด Emerging Theme อัตโนมัติ (Post-it เขียวอ่อน)";
+        ? "พิมพ์ข้อความแล้วกดแปะ — จะสร้างเป็น Post-it ชมพูอ่อน (Fear) เข้าสู่กลุ่ม Theme ร่วมอัตโนมัติ"
+        : "พิมพ์ข้อความแล้วกดแปะ — จะสร้างเป็น Post-it เขียวอ่อน (Hope) เข้าสู่กลุ่ม Theme ร่วมอัตโนมัติ";
     }
-    const hit = classifySingleTextToRule(clean, polarity);
-    if (hit && hit.rule) {
-      return `จัดเข้ากลุ่มอัตโนมัติ: ${hit.rule.icon} ${hit.rule.nameFn(hit.facetHits)}`;
+    const hit = classifyTextToUnifiedDomain(clean);
+    if (hit && hit.domain) {
+      const hCnt = polarity === "hopes" ? 1 : 0;
+      const fCnt = polarity === "fears" ? 1 : 0;
+      return `จะถูกจัดเข้าวง Theme: ${hit.domain.icon} ${hit.domain.nameFn(hit.facetHits, hCnt, fCnt)}`;
     }
-    return polarity === "fears"
-      ? `ประเด็นใหม่ (Open Coding): "${clean.slice(0, 22)}"`
-      : `ประเด็นใหม่ (Open Coding): "${clean.slice(0, 22)}"`;
+    return `จะเปิดวงประเด็นใหม่ (Open Coding): "${clean.slice(0, 24)}"`;
   }
 
   /* ---------- 1. Helpers, URL Resolution & Safe Storage ---------- */
@@ -950,7 +917,12 @@
     return "explorer";
   })();
 
-  const initialDirectTarget = TARGET_MAP.has(initialHash) ? initialHash : "";
+  const initialDirectTarget =
+    initialHash === TOPIC_HOPES_ID || initialHash === TOPIC_FEARS_ID
+      ? TOPIC_HF_BOARD_ID
+      : TARGET_MAP.has(initialHash)
+      ? initialHash
+      : "";
   const savedUidRaw = sGet("kuchi2569_my_uid", "");
   let sanitizedSavedUid = MEMBER_MAP.has(savedUidRaw) ? savedUidRaw : "";
   if (savedUidRaw && !sanitizedSavedUid) sSet("kuchi2569_my_uid", "");
@@ -969,10 +941,10 @@
   const state = {
     role: detectedRole, // "facilitator" | "participant" | "explorer"
     view: initialDirectTarget ? "detail" : detectedRole === "facilitator" ? "lobby" : "overview",
-    activeTargetId: initialDirectTarget || TOPIC_HOPES_ID,
+    activeTargetId: initialDirectTarget || TOPIC_HF_BOARD_ID,
     detailTab: "wordcloud", // "wordcloud" | "rating"
-    hfDisplayMode: "split", // "split" (Post-it Affinity + Word Cloud) | "affinity" | "cloud"
-    hfSelectedPolarity: initialDirectTarget === TOPIC_FEARS_ID ? "fears" : "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
+    hfDisplayMode: "affinity", // "affinity" (Flipchart Wall เต็มจอ) | "split" (Affinity + Cloud) | "cloud"
+    hfSelectedPolarity: "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
     overviewReturningFromId: "",
     isAnimatingZoomOut: false,
     dpadIndex: 0,
@@ -1164,12 +1136,12 @@
 
       if (state.view === "overview" && prev.view === "detail" && !hasAnyOpenModal()) {
         state.detailTab = prev.detailTab || "wordcloud";
-        zoomIntoTarget(prev.activeTargetId || TOPIC_HOPES_ID, null, false, true);
+        zoomIntoTarget(prev.activeTargetId || TOPIC_HF_BOARD_ID, null, false, true);
         return;
       }
 
       state.view = prev.view || (state.role === "facilitator" ? "lobby" : "overview");
-      state.activeTargetId = prev.activeTargetId || TOPIC_HOPES_ID;
+      state.activeTargetId = prev.activeTargetId || TOPIC_HF_BOARD_ID;
       syncDefaultPolarityWithTarget(state.activeTargetId);
       state.detailTab = prev.detailTab || "wordcloud";
       playChime([523.25, 440], 0.08, "sine", 0.04);
@@ -1295,7 +1267,7 @@
   function clickerNextSlide() {
     if (state.isAnimatingZoomOut) return;
     if (state.view === "lobby") {
-      zoomIntoTarget(TOPIC_HOPES_ID, null, false, false);
+      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false);
       return;
     }
     if (state.view === "detail") {
@@ -1543,8 +1515,15 @@
       changed = true;
     }
 
-    const nextView = msg.view === "detail" && TARGET_MAP.has(msg.targetId) ? "detail" : msg.view === "lobby" ? "lobby" : "overview";
-    const nextTarget = TARGET_MAP.has(msg.targetId) ? msg.targetId : state.activeTargetId;
+    const normalizedIncomingTarget =
+      msg.targetId === TOPIC_HOPES_ID || msg.targetId === TOPIC_FEARS_ID ? TOPIC_HF_BOARD_ID : msg.targetId;
+    const nextView =
+      msg.view === "detail" && TARGET_MAP.has(normalizedIncomingTarget)
+        ? "detail"
+        : msg.view === "lobby"
+        ? "lobby"
+        : "overview";
+    const nextTarget = TARGET_MAP.has(normalizedIncomingTarget) ? normalizedIncomingTarget : state.activeTargetId;
     const nextTab = msg.detailTab === "rating" ? "rating" : "wordcloud";
 
     if (state.view !== nextView || state.activeTargetId !== nextTarget || state.detailTab !== nextTab) {
@@ -1906,8 +1885,12 @@
     if (targetId === TOPIC_HF_BOARD_ID) {
       const h = getAggregatedWords(TOPIC_HOPES_ID);
       const f = getAggregatedWords(TOPIC_FEARS_ID);
+      const combined = h.items
+        .map((it) => Object.assign({}, it, { polarity: "hopes" }))
+        .concat(f.items.map((it) => Object.assign({}, it, { polarity: "fears" })))
+        .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.text.localeCompare(b.text, "th")));
       return {
-        items: h.items.concat(f.items),
+        items: combined,
         uniqueRespondents: Math.max(h.uniqueRespondents, f.uniqueRespondents),
         totalSubmissions: h.totalSubmissions + f.totalSubmissions
       };
@@ -2250,38 +2233,41 @@
   }
 
   function renderAffinityClusterCardHtml(cluster) {
-    const isHopes = cluster.polarity === "hopes";
-    const postitLabel = isHopes ? "Hope" : "Fear";
     return `
-      <article class="aff-cluster-card ${isHopes ? "is-hopes" : "is-fears"}">
+      <article class="aff-cluster-card">
         <div class="aff-cluster-top">
           <h3 class="aff-cluster-title">
             <span>${cluster.icon}</span> ${esc(cluster.title)}
             <button
               type="button"
-              style="border:none;background:transparent;cursor:pointer;font-size:12px;opacity:0.55;padding:0 3px"
+              style="border:none;background:transparent;cursor:pointer;font-size:12px;opacity:0.65;padding:0 3px"
               data-act="rename-theme"
               data-cluster-key="${esc(cluster.clusterKey)}"
               data-cur-title="${esc(cluster.title)}"
               title="ปรับแก้ชื่อ Emerging Theme นี้ร่วมกันในห้อง"
             >✏️</button>
           </h3>
-          <span class="aff-cluster-count">${cluster.voteSum} แผ่น · ${cluster.pct}%</span>
+          <div class="aff-cluster-badges">
+            ${cluster.hopeSum > 0 ? `<span class="aff-mini-pill is-hopes">🌱 Hope ${cluster.hopeSum}</span>` : ""}
+            ${cluster.fearSum > 0 ? `<span class="aff-mini-pill is-fears">🌸 Fear ${cluster.fearSum}</span>` : ""}
+            <span class="aff-cluster-count">${cluster.pct}%</span>
+          </div>
         </div>
         <div class="aff-cluster-concept">${esc(cluster.concept)}</div>
         <div class="aff-notes-wrap">
           ${cluster.notes
-            .map(
-              (n) => `
-                <div class="aff-sticky-note ${isHopes ? "is-hopes" : "is-fears"}">
+            .map((n) => {
+              const isFearNote = n.polarity === "fears";
+              return `
+                <div class="aff-sticky-note ${isFearNote ? "is-fears" : "is-hopes"}">
                   <div class="postit-kicker-row">
-                    <span class="postit-kicker-tag">${postitLabel}</span>
+                    <span class="postit-kicker-tag">${isFearNote ? "Fear" : "Hope"}</span>
                     ${n.count > 1 ? `<span>×${n.count}</span>` : ""}
                   </div>
                   <div class="postit-text">${esc(n.text)}</div>
                 </div>
-              `
-            )
+              `;
+            })
             .join("")}
         </div>
       </article>
@@ -2291,118 +2277,74 @@
   function renderThematicAffinityBodyHtml(tObj) {
     const hopesAgg = getAggregatedWords(TOPIC_HOPES_ID);
     const fearsAgg = getAggregatedWords(TOPIC_FEARS_ID);
+    const totalCnt = hopesAgg.totalSubmissions + fearsAgg.totalSubmissions;
 
     if (state.hideWordsUntilReveal) {
-      const cnt =
-        tObj.id === TOPIC_HOPES_ID
-          ? hopesAgg.totalSubmissions
-          : tObj.id === TOPIC_FEARS_ID
-          ? fearsAgg.totalSubmissions
-          : hopesAgg.totalSubmissions + fearsAgg.totalSubmissions;
       return `
         <div class="zm-cloud-body">
           <div class="zm-empty-prompt">
-            <strong>🙈 ซ่อน Post-it ไว้รอแลกเปลี่ยนพร้อมกัน (${cnt} แผ่น)</strong>
-            <p>เมื่อทุกคนแปะ Post-it ความหวัง/ความกังวลครบแล้ว กดปุ่มด้านล่างเพื่อแสดงการจัดกลุ่ม Emerging Themes!</p>
+            <strong>🙈 ซ่อน Post-it ไว้รอแลกเปลี่ยนพร้อมกัน (${totalCnt} แผ่น · 🌱 Hope ${hopesAgg.totalSubmissions} · 🌸 Fear ${fearsAgg.totalSubmissions})</strong>
+            <p>เมื่อทุกคนแปะ Post-it ความหวัง/ความกังวลครบแล้ว กดปุ่มด้านล่างเพื่อเปิดบอร์ด HOPES &amp; FEARS Affinity Diagram!</p>
             <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">
-              ✨ เปิดบอร์ด Post-it &amp; Emerging Themes!
+              ✨ เปิดบอร์ด HOPES &amp; FEARS Affinity Diagram!
             </button>
           </div>
         </div>
       `;
     }
 
-    // Slide 4: Combined Side-by-Side Hopes (เขียวอ่อน) & Fears (ชมพูอ่อน) Conceptualization Wall
-    if (tObj.id === TOPIC_HF_BOARD_ID) {
-      const hSyn = synthesizeDynamicThemes(hopesAgg.items, "hopes");
-      const fSyn = synthesizeDynamicThemes(fearsAgg.items, "fears");
+    const syn = synthesizeUnifiedAffinityWall(hopesAgg.items, fearsAgg.items);
+    const mergedAgg = getAggregatedWords(TOPIC_HF_BOARD_ID);
 
+    if (syn.totalVotes === 0) {
       return `
         <div class="zm-thematic-stage">
-          <div class="aff-synth-banner">
-            <div>
-              <strong>🧠 Conceptualization Summary:</strong>
-              ${
-                hSyn.totalVotes + fSyn.totalVotes > 0
-                  ? `Hopes ${hSyn.totalVotes} แผ่น (${hSyn.clusters.length} ธีม) · Fears ${fSyn.totalVotes} แผ่น (${fSyn.clusters.length} ธีม) — ชื่อ Emerging Theme ปรับเปลี่ยนอัตโนมัติตามข้อมูลใหม่ และกด ✏️ เพื่อปรับชื่อร่วมกันได้`
-                  : "พิมพ์ข้อความด้านล่างแล้วเลือก 🌱 Hope (โพสต์อิทเขียวอ่อน) หรือ 🌸 Fear (โพสต์อิทชมพูอ่อน) เพื่อจัดกลุ่มเข้า Emerging Theme อัตโนมัติ"
-              }
+          <section class="aff-unified-board">
+            <div class="aff-board-tape-banner">HOPES &amp; FEARS</div>
+            <div class="aff-synth-banner">
+              <span>🧠 <strong>Dynamic Affinity Diagram (Conceptualization):</strong> พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌱 Hope (Post-it เขียวอ่อน)</strong> หรือ <strong>🌸 Fear (Post-it ชมพูอ่อน)</strong> — ระบบจัดกลุ่มทั้ง Hope และ Fear ที่มีประเด็นเดียวกันไว้ในวง Emerging Theme เดียวกันอัตโนมัติ!</span>
             </div>
-            ${
-              hSyn.totalVotes + fSyn.totalVotes === 0
-                ? `<button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="both">✨ ทดลองโหลดตัวอย่าง Post-it</button>`
-                : ""
-            }
-          </div>
-
-          <div class="aff-dual-wall">
-            <section class="aff-wall-col is-hopes">
-              <div class="aff-wall-col-head" style="color:#14532d">
-                <span>🌱 Hopes · ความหวัง (Post-it เขียวอ่อน)</span>
-                <span style="font-size:13px;padding:3px 10px;border-radius:999px;background:#d9f99d;border:1px solid #84cc16">
-                  ${hSyn.clusters.length} Emerging Themes · ${hSyn.totalVotes} แผ่น
-                </span>
+            <div style="padding:26px 16px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+              <div style="display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap">
+                <div class="aff-sticky-note is-hopes" style="width:152px;min-height:92px;transform:rotate(-3deg)">
+                  <div class="postit-kicker-row"><span class="postit-kicker-tag">Hope</span></div>
+                  <div class="postit-text">ความหวังต่อการเรียนรู้และประสบการณ์ (เขียวอ่อน)</div>
+                </div>
+                <div class="aff-sticky-note is-fears" style="width:152px;min-height:92px;transform:rotate(2.5deg)">
+                  <div class="postit-kicker-row"><span class="postit-kicker-tag">Fear</span></div>
+                  <div class="postit-text">ความกังวลในการวน COMMED 5–6 สัปดาห์ (ชมพูอ่อน)</div>
+                </div>
               </div>
-              ${
-                hSyn.clusters.length
-                  ? `<div class="aff-clusters-grid">${hSyn.clusters.map(renderAffinityClusterCardHtml).join("")}</div>`
-                  : `<div style="padding:26px 14px;text-align:center;color:#166534;font-size:14px">ยังไม่มี Post-it ความหวัง — พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌱 Hope</strong> ได้เลย</div>`
-              }
-            </section>
-
-            <section class="aff-wall-col is-fears">
-              <div class="aff-wall-col-head" style="color:#831843">
-                <span>🌸 Fears · ความกังวล (Post-it ชมพูอ่อน)</span>
-                <span style="font-size:13px;padding:3px 10px;border-radius:999px;background:#fbcfe8;border:1px solid #f472b6">
-                  ${fSyn.clusters.length} Emerging Themes · ${fSyn.totalVotes} แผ่น
-                </span>
+              <div style="font-size:14px;color:#57534e;max-width:680px;line-height:1.5">
+                ยังไม่มีแผ่น Post-it บนกระดาษ Flipchart — สแกน QR Code ส่งจากมือถือ หรือพิมพ์จากช่องด้านล่างได้เลย (ในแต่ละวง Emerging Theme จะรวมทั้งแผ่นสีเขียวอ่อนและสีชมพูอ่อนที่อยู่ในประเด็นเดียวกัน)
               </div>
-              ${
-                fSyn.clusters.length
-                  ? `<div class="aff-clusters-grid">${fSyn.clusters.map(renderAffinityClusterCardHtml).join("")}</div>`
-                  : `<div style="padding:26px 14px;text-align:center;color:#9f1239;font-size:14px">ยังไม่มี Post-it ความกังวล — พิมพ์ข้อความด้านล่างแล้วเลือก <strong>🌸 Fear</strong> ได้เลย</div>`
-              }
-            </section>
-          </div>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
+                <button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="both">✨ ทดลองโหลดตัวอย่าง Post-it (Hope + Fear)</button>
+              </div>
+            </div>
+          </section>
         </div>
       `;
     }
 
-    // Slide 2 (HOPES) or Slide 3 (FEARS): Dynamic Thematic Affinity + Word Cloud
-    const pol = tObj.id === TOPIC_FEARS_ID ? "fears" : "hopes";
-    const curAgg = pol === "fears" ? fearsAgg : hopesAgg;
-    const syn = synthesizeDynamicThemes(curAgg.items, pol);
-
-    if (!curAgg.items.length) {
-      return `
-        <div class="zm-cloud-body">
-          <div class="zm-empty-prompt" style="border-color:${pol === "fears" ? "#f9a8d4" : "#a3e635"};background:${pol === "fears" ? "#fdf2f8" : "#f7fee7"}">
-            <strong>${pol === "fears" ? "🌸 ส่งความกังวล (FEARS) ขึ้นเป็น Post-it สีชมพูอ่อนกันเลย!" : "🌱 ส่งความหวัง (HOPES) ขึ้นเป็น Post-it สีเขียวอ่อนกันเลย!"}</strong>
-            <p>พิมพ์ข้อความแล้วเลือก <strong>${pol === "fears" ? "🌸 Fear" : "🌱 Hope"}</strong> — ระบบจะสร้างทั้ง <strong>Word Cloud</strong> และจัดกลุ่ม <strong>Emerging Themes (Affinity Diagram)</strong> ให้อัตโนมัติแบบเรียลไทม์!</p>
-            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-              <button type="button" class="tv-pill-btn is-primary" data-act="open-qr">📱 เปิด QR Code สแกนเข้าห้อง</button>
-              <button type="button" class="tv-pill-btn" data-act="load-hf-demo" data-demo="${pol}">✨ ทดลองโหลดตัวอย่าง ${pol === "fears" ? "FEARS" : "HOPES"}</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    const cloudPositioned = computeAdaptiveWordCloud(curAgg.items, state.hfDisplayMode === "split");
+    const cloudPositioned = computeAdaptiveWordCloud(mergedAgg.items, state.hfDisplayMode === "split");
     const cloudCanvasHtml = `
       <div class="zm-cloud-canvas">
         ${cloudPositioned
-          .map(
-            (w, idx) => `
+          .map((w, idx) => {
+            const isFearWord = w.polarity === "fears";
+            const wordColor = isFearWord ? "#db2777" : "#15803d";
+            return `
               <span
                 class="menti-word-item"
-                style="left:${w.leftPct}%;top:${w.topPct}%;font-size:${w.fontPx}px;color:${w.color};z-index:${50 - idx}"
-                title="${esc(w.text)} (${w.count} ครั้ง)"
+                style="left:${w.leftPct}%;top:${w.topPct}%;font-size:${w.fontPx}px;color:${wordColor};z-index:${50 - idx}"
+                title="${isFearWord ? "🌸 Fear" : "🌱 Hope"}: ${esc(w.text)} (${w.count} ครั้ง)"
                 data-act="open-results"
                 data-target-id="${esc(tObj.id)}"
-              >${esc(w.text)}${w.count > 1 ? `<sup class="menti-word-sup">×${w.count}</sup>` : ""}</span>
-            `
-          )
+              >${isFearWord ? "🌸 " : "🌱 "}${esc(w.text)}${w.count > 1 ? `<sup class="menti-word-sup">×${w.count}</sup>` : ""}</span>
+            `;
+          })
           .join("")}
       </div>
     `;
@@ -2411,40 +2353,42 @@
       return `<div class="zm-cloud-body">${cloudCanvasHtml}</div>`;
     }
 
-    if (state.hfDisplayMode === "affinity") {
+    const unifiedFlipchartWallHtml = `
+      <section class="aff-unified-board">
+        <div class="aff-board-tape-banner">HOPES &amp; FEARS</div>
+        <div class="aff-synth-banner">
+          <span>🧠 <strong>Dynamic Conceptualization:</strong> ${esc(syn.summaryLine)}</span>
+          <span style="font-size:12px;color:#57534e">แต่ละวง Emerging Theme รวมทั้ง 🌱 Hope (เขียวอ่อน) และ 🌸 Fear (ชมพูอ่อน) · กด ✏️ เพื่อปรับชื่อธีมสดๆ</span>
+        </div>
+        <div class="aff-clusters-grid">
+          ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+        </div>
+      </section>
+    `;
+
+    if (state.hfDisplayMode === "split") {
       return `
         <div class="zm-thematic-stage">
-          <div class="aff-synth-banner">
-            <span>🧠 <strong>Dynamic Thematic Synthesis:</strong> ${esc(syn.summaryLine)}</span>
-          </div>
-          <div class="aff-clusters-grid">
-            ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
+          <div class="zm-split-thematic">
+            ${unifiedFlipchartWallHtml}
+            <div class="zm-split-cloud-pane">
+              <div class="zm-split-cloud-label">
+                <span>☁️ Word Cloud รวม (${mergedAgg.totalSubmissions} แผ่น)</span>
+                <button type="button" class="tv-pill-btn" style="height:24px;font-size:11px;padding:0 8px" data-act="set-hf-display" data-mode="cloud">ขยายเต็มจอ</button>
+              </div>
+              <div style="flex:1;position:relative;min-height:220px">
+                ${cloudCanvasHtml}
+              </div>
+            </div>
           </div>
         </div>
       `;
     }
 
-    // Default "split": Left = Post-it Affinity Diagram (Emerging Themes), Right = Live Word Cloud
+    // Default "affinity": Full-Screen Kraft-Paper Flipchart Wall ("HOPES & FEARS") with Mixed Green & Pink Post-its per Theme!
     return `
       <div class="zm-thematic-stage">
-        <div class="aff-synth-banner">
-          <span>🧠 <strong>Thematic Analysis from Word Cloud:</strong> ${esc(syn.summaryLine)}</span>
-          <span style="font-size:12px;color:#64748b">กด ✏️ บนหัวกลุ่มเพื่อปรับชื่อ Emerging Theme ได้สดๆ</span>
-        </div>
-        <div class="zm-split-thematic">
-          <div class="aff-clusters-grid">
-            ${syn.clusters.map(renderAffinityClusterCardHtml).join("")}
-          </div>
-          <div class="zm-split-cloud-pane">
-            <div class="zm-split-cloud-label">
-              <span>☁️ Word Cloud ต้นทาง (${curAgg.totalSubmissions} คำ)</span>
-              <button type="button" class="tv-pill-btn" style="height:24px;font-size:11px;padding:0 8px" data-act="set-hf-display" data-mode="cloud">ขยายเต็มจอ</button>
-            </div>
-            <div style="flex:1;position:relative;min-height:200px">
-              ${cloudCanvasHtml}
-            </div>
-          </div>
-        </div>
+        ${unifiedFlipchartWallHtml}
       </div>
     `;
   }
@@ -2478,8 +2422,6 @@
       ? `${myMem.nickname}${myMem.kind === "student" ? ` (${myMem.shortNo})` : ""}`
       : state.myGuestName || "Login รหัส 3 ตัว";
     const onlineMembers = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
-    const isOnHopes = state.view === "detail" && state.activeTargetId === TOPIC_HOPES_ID;
-    const isOnFears = state.view === "detail" && state.activeTargetId === TOPIC_FEARS_ID;
     const isOnHfBoard = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID;
 
     return `
@@ -2491,7 +2433,7 @@
               <span class="tv-logo-badge${isFac ? " is-fac" : ""}">${isFac ? "FAC" : "KG"}</span>
               <span class="tv-brand-titles">
                 <span class="tv-brand-main">${isFac ? "Facilitator จอใหญ่ · Kuchi Gang 2569" : "Kuchi Gang 2569 · รพร.กุฉินารายณ์ (21 คน)"}</span>
-                <span class="tv-brand-sub">${isFac ? "Slide 1 QR → HOPES → FEARS → Affinity Board → 21 คน (กด Clicker ซ้าย/ขวา)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
+                <span class="tv-brand-sub">${isFac ? "Slide 1 QR → Slide 2 Hopes & Fears → ภาพรวม 21 คน (กด Clicker ซ้าย/ขวา)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
               </span>
             </button>
           </div>
@@ -2519,34 +2461,13 @@
 
             <button
               type="button"
-              class="tv-pill-btn ${isOnHopes ? "is-primary" : ""}"
-              style="${!isOnHopes ? "background:#f7fee7;border-color:#a3e635;color:#14532d" : ""}"
-              data-act="zoom-in-target"
-              data-target-id="${TOPIC_HOPES_ID}"
-              title="Slide 2: HOPES (Post-it เขียวอ่อน)"
-            >
-              🌱 <span>HOPES</span>
-            </button>
-
-            <button
-              type="button"
-              class="tv-pill-btn ${isOnFears ? "is-primary" : ""}"
-              style="${!isOnFears ? "background:#fdf2f8;border-color:#f9a8d4;color:#831843" : ""}"
-              data-act="zoom-in-target"
-              data-target-id="${TOPIC_FEARS_ID}"
-              title="Slide 3: FEARS (Post-it ชมพูอ่อน)"
-            >
-              🌸 <span>FEARS</span>
-            </button>
-
-            <button
-              type="button"
-              class="tv-pill-btn ${isOnHfBoard ? "is-primary" : ""} hide-mobile"
+              class="tv-pill-btn ${isOnHfBoard ? "is-primary" : ""}"
+              style="${!isOnHfBoard ? "background:linear-gradient(135deg,#f7fee7,#fdf2f8);border-color:#93c5fd;color:#1e3a8a" : ""}"
               data-act="zoom-in-target"
               data-target-id="${TOPIC_HF_BOARD_ID}"
-              title="Slide 4: บอร์ดรวม Hopes & Fears Affinity Conceptualization"
+              title="Slide 2: บอร์ด Hopes & Fears Affinity Conceptualization"
             >
-              📌 <span>Affinity รวม</span>
+              📌 <span>Hopes &amp; Fears</span>
             </button>
 
             <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀</button>
@@ -2624,7 +2545,7 @@
               <span class="fac-checkin-counter">
                 🟢 เช็คอินเข้าห้องแล้ว ${onlineUidSet.size} / ${MEMBERS.length} คน${guestCount > 0 ? ` (+ผู้ร่วมฟัง ${guestCount})` : ""}
               </span>
-              <span style="font-size:12.5px;color:#64748b;font-weight:600">กดปุ่ม Clicker ถัดไป (→ / PageDown) เพื่อไป Slide 2: HOPES</span>
+              <span style="font-size:12.5px;color:#64748b;font-weight:600">กดปุ่ม Clicker ถัดไป (→ / PageDown) เพื่อไป Slide 2: Hopes &amp; Fears</span>
             </div>
 
             <div class="fac-checkin-grid">
@@ -2648,7 +2569,7 @@
 
             <div class="fac-cta-row">
               <button type="button" class="tv-pill-btn is-primary fac-cta-big" data-act="clicker-next">
-                🌱 ถัดไป (Slide 2): คำถาม HOPES (Post-it เขียวอ่อน) ▶
+                📌 ถัดไป (Slide 2): บอร์ด Hopes &amp; Fears (Post-it เขียวอ่อน &amp; ชมพูอ่อน) ▶
               </button>
               <button type="button" class="tv-pill-btn fac-cta-big" style="border-color:#93c5fd;background:#eff6ff;color:#1d4ed8" data-act="go-overview">
                 ⊞ ข้ามไปภาพรวม 21 คน
@@ -2681,29 +2602,11 @@
             <button
               type="button"
               class="tv-pill-btn"
-              style="background:#ecfccb;border-color:#84cc16;color:#14532d"
-              data-act="zoom-in-target"
-              data-target-id="${TOPIC_HOPES_ID}"
-            >
-              🌱 HOPES${hopesAgg.totalSubmissions > 0 ? ` (${hopesAgg.totalSubmissions})` : ""}
-            </button>
-            <button
-              type="button"
-              class="tv-pill-btn"
-              style="background:#fce7f3;border-color:#f472b6;color:#831843"
-              data-act="zoom-in-target"
-              data-target-id="${TOPIC_FEARS_ID}"
-            >
-              🌸 FEARS${fearsAgg.totalSubmissions > 0 ? ` (${fearsAgg.totalSubmissions})` : ""}
-            </button>
-            <button
-              type="button"
-              class="tv-pill-btn"
-              style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8"
+              style="background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a"
               data-act="zoom-in-target"
               data-target-id="${TOPIC_HF_BOARD_ID}"
             >
-              📌 บอร์ดรวม Hopes &amp; Fears
+              📌 Hopes &amp; Fears${hopesAgg.totalSubmissions + fearsAgg.totalSubmissions > 0 ? ` (${hopesAgg.totalSubmissions + fearsAgg.totalSubmissions})` : ""}
             </button>
             <button
               type="button"
@@ -2921,11 +2824,9 @@
   function renderZoomedDetailHtml() {
     const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
     const m = tObj.member;
-    const isHopes = tObj.id === TOPIC_HOPES_ID;
-    const isFears = tObj.id === TOPIC_FEARS_ID;
-    const isHfBoard = tObj.id === TOPIC_HF_BOARD_ID;
-    const agg = getAggregatedWords(tObj.id);
-    const positioned = !tObj.isHfMode ? computeAdaptiveWordCloud(agg.items, false) : [];
+    const isHfBoard = Boolean(tObj.isHfMode);
+    const agg = getAggregatedWords(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id);
+    const positioned = !isHfBoard ? computeAdaptiveWordCloud(agg.items, false) : [];
 
     const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
     const ratings = Array.from(rMap.values());
@@ -2934,23 +2835,13 @@
     const displayScore = ownerRec ? Number(ownerRec.score) : avg;
     const scorePct = displayScore > 0 ? ((displayScore - 1) / 4) * 100 : 0;
 
-    const bigQuestionHtml = isHopes
-      ? `<span class="zm-highlight-name" style="background:#ecfccb;border:1px solid #84cc16;color:#14532d">HOPES</span> ${esc(HOPES_QUESTION_TEXT)}`
-      : isFears
-      ? `<span class="zm-highlight-name" style="background:#fce7f3;border:1px solid #f472b6;color:#831843">FEARS</span> ${esc(FEARS_QUESTION_TEXT)}`
-      : isHfBoard
-      ? `<span class="zm-highlight-name" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);color:#1e3a8a">Hopes &amp; Fears</span> แลกเปลี่ยนความหวัง (Post-it เขียวอ่อน) และความกังวล (Post-it ชมพูอ่อน) ภายในกลุ่มใหญ่ (Conceptualization)`
+    const bigQuestionHtml = isHfBoard
+      ? `<span class="zm-highlight-name" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);color:#1e3a8a">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?`
       : m
       ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
       : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์ จ.กาฬสินธุ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
 
-    const nextBtnLabel = isHopes
-      ? "ถัดไป: FEARS ▶"
-      : isFears
-      ? "ถัดไป: Affinity รวม ▶"
-      : isHfBoard
-      ? "ถัดไป: ภาพรวม 21 คน ▶"
-      : "คนถัดไป ▶";
+    const nextBtnLabel = isHfBoard ? "ถัดไป: ภาพรวม 21 คน ▶" : "คนถัดไป ▶";
 
     return `
       <main class="tv-zoom-stage-outer">
@@ -2967,20 +2858,19 @@
             <div class="zm-nav-group">
               ${renderUniversalNavClusterHtml(true)}
               ${
-                tObj.isHfMode && !isHfBoard
+                isHfBoard
                   ? `
-                    <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "split" ? "is-active" : ""}" data-act="set-hf-display" data-mode="split">
-                      📌 Post-it Affinity + ☁️ Cloud
-                    </button>
                     <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "affinity" ? "is-active" : ""}" data-act="set-hf-display" data-mode="affinity">
                       📌 Affinity เต็มจอ
                     </button>
+                    <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "split" ? "is-active" : ""}" data-act="set-hf-display" data-mode="split">
+                      📌 Affinity + ☁️ Cloud
+                    </button>
                     <button type="button" class="tv-pill-btn ${state.hfDisplayMode === "cloud" ? "is-active" : ""}" data-act="set-hf-display" data-mode="cloud">
-                      ☁️ Word Cloud เต็มจอ
+                      ☁️ Word Cloud
                     </button>
                   `
-                  : !isHfBoard
-                  ? `
+                  : `
                     <button type="button" class="tv-pill-btn ${state.detailTab === "wordcloud" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="wordcloud">
                       ☁️ Word Cloud (${agg.totalSubmissions})
                     </button>
@@ -2990,9 +2880,8 @@
                         : ""
                     }
                   `
-                  : ""
               }
-              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(tObj.id)}">📊 รายการคำ (${agg.totalSubmissions})</button>
+              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}">📊 รายการคำ (${agg.totalSubmissions})</button>
             </div>
 
             <div class="zm-nav-group">
@@ -3004,35 +2893,7 @@
 
           <div class="zm-hero-header">
             ${
-              isHopes
-                ? `
-                  <div class="zm-person-portrait-card" style="background:linear-gradient(145deg,#ecfccb 0%,#dcfce7 100%);border-color:#84cc16">
-                    <div style="width:68px;height:68px;border-radius:14px;background:#bef264;border:1.5px solid #65a30d;color:#14532d;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:15px;flex-shrink:0;box-shadow:0 6px 14px rgba(101,163,13,0.2)">
-                      <span style="text-decoration:underline">Hope</span>
-                      <span style="font-size:20px">🌱</span>
-                    </div>
-                    <div class="zm-person-meta">
-                      <span class="zm-person-kicker" style="color:#15803d">SLIDE 2 · POST-IT สีเขียวอ่อน</span>
-                      <span class="zm-person-nick" style="color:#14532d">ความหวัง (Hopes)</span>
-                      <span class="zm-person-fullname">Thematic Analysis &amp; Word Cloud</span>
-                    </div>
-                  </div>
-                `
-                : isFears
-                ? `
-                  <div class="zm-person-portrait-card" style="background:linear-gradient(145deg,#fce7f3 0%,#fbcfe8 100%);border-color:#f472b6">
-                    <div style="width:68px;height:68px;border-radius:14px;background:#fbcfe8;border:1.5px solid #ec4899;color:#831843;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:15px;flex-shrink:0;box-shadow:0 6px 14px rgba(236,72,153,0.2)">
-                      <span style="text-decoration:underline">Fear</span>
-                      <span style="font-size:20px">🌸</span>
-                    </div>
-                    <div class="zm-person-meta">
-                      <span class="zm-person-kicker" style="color:#be185d">SLIDE 3 · POST-IT สีชมพูอ่อน</span>
-                      <span class="zm-person-nick" style="color:#831843">ความกังวล (Fears)</span>
-                      <span class="zm-person-fullname">Thematic Analysis &amp; Word Cloud</span>
-                    </div>
-                  </div>
-                `
-                : isHfBoard
+              isHfBoard
                 ? `
                   <div class="zm-person-portrait-card" style="background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 100%);border-color:#1e40af;color:#fff">
                     <div style="display:flex;gap:4px;flex-shrink:0">
@@ -3040,7 +2901,7 @@
                       <div style="width:34px;height:44px;background:#fbcfe8;color:#831843;border-radius:3px;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:rotate(4deg);text-decoration:underline">Fear</div>
                     </div>
                     <div class="zm-person-meta">
-                      <span class="zm-person-kicker" style="color:#bfdbfe">SLIDE 4 · AFFINITY DIAGRAM</span>
+                      <span class="zm-person-kicker" style="color:#bfdbfe">SLIDE 2 · AFFINITY DIAGRAM</span>
                       <span class="zm-person-nick" style="color:#ffffff">Hopes and Fears</span>
                       <span class="zm-person-fullname" style="color:#dbeafe">'ความหวัง' และ 'ความกังวล'</span>
                     </div>
@@ -3322,14 +3183,9 @@
                 <strong style="font-size:16.5px">เลือกหัวข้อหรือสมาชิกที่ต้องการตอบ</strong>
                 <button type="button" class="tv-pill-btn" data-act="phone-disable-manual">กลับโหมดรอจอใหญ่</button>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                <button type="button" class="tv-pill-btn" style="height:42px;background:#ecfccb;border-color:#84cc16;color:#14532d" data-act="phone-manual-target" data-target-id="${TOPIC_HOPES_ID}">
-                  🌱 HOPES (เขียวอ่อน)
-                </button>
-                <button type="button" class="tv-pill-btn" style="height:42px;background:#fce7f3;border-color:#f472b6;color:#831843" data-act="phone-manual-target" data-target-id="${TOPIC_FEARS_ID}">
-                  🌸 FEARS (ชมพูอ่อน)
-                </button>
-              </div>
+              <button type="button" class="tv-pill-btn" style="height:42px;width:100%;background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a" data-act="phone-manual-target" data-target-id="${TOPIC_HF_BOARD_ID}">
+                📌 บอร์ด Hopes &amp; Fears (Post-it เขียวอ่อน &amp; ชมพูอ่อน)
+              </button>
               <div class="id-picker-grid">
                 ${MEMBERS.map(
                   (m) => `
@@ -3361,12 +3217,7 @@
       const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
       const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
 
-      const questionHtml =
-        tObj.id === TOPIC_HOPES_ID
-          ? `<span class="zm-highlight-name" style="background:#ecfccb;color:#14532d">HOPES</span> ${esc(HOPES_QUESTION_TEXT)}`
-          : tObj.id === TOPIC_FEARS_ID
-          ? `<span class="zm-highlight-name" style="background:#fce7f3;color:#831843">FEARS</span> ${esc(FEARS_QUESTION_TEXT)}`
-          : `<span class="zm-highlight-name">Hopes &amp; Fears</span> เขียนความหวัง (Post-it เขียวอ่อน) หรือความกังวล (Post-it ชมพูอ่อน) เพื่อจัดกลุ่มเข้า Affinity Diagram บนจอใหญ่`;
+      const questionHtml = `<span class="zm-highlight-name">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?`;
 
       return (
         topBar +
@@ -3753,9 +3604,17 @@
                         .map(
                           (item) => `
                             <tr style="border-bottom:1px solid #f1f5f9">
-                              <td style="padding:8px;font-weight:700">${esc(item.text)}</td>
+                              <td style="padding:8px;font-weight:700">
+                                ${
+                                  item.polarity === "hopes"
+                                    ? `<span class="aff-mini-pill is-hopes" style="margin-right:6px">🌱 Hope</span>`
+                                    : item.polarity === "fears"
+                                    ? `<span class="aff-mini-pill is-fears" style="margin-right:6px">🌸 Fear</span>`
+                                    : ""
+                                }${esc(item.text)}
+                              </td>
                               <td style="padding:8px">${item.count}</td>
-                              <td style="padding:8px"><button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="delete-word-norm" data-target-id="${esc(tid === TOPIC_HF_BOARD_ID ? TOPIC_HOPES_ID : tid)}" data-norm="${esc(item.key)}">ลบ</button></td>
+                              <td style="padding:8px"><button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="delete-word-norm" data-target-id="${esc(item.polarity === "fears" ? TOPIC_FEARS_ID : item.polarity === "hopes" ? TOPIC_HOPES_ID : tid)}" data-norm="${esc(item.key)}">ลบ</button></td>
                             </tr>
                           `
                         )
@@ -4062,7 +3921,8 @@
     } else if (act === "delete-word-norm") {
       const tid = btn.getAttribute("data-target-id");
       const norm = btn.getAttribute("data-norm");
-      [tid, TOPIC_HOPES_ID, TOPIC_FEARS_ID].forEach((checkTid) => {
+      const checkList = tid === TOPIC_HF_BOARD_ID ? [TOPIC_HOPES_ID, TOPIC_FEARS_ID] : [tid];
+      checkList.forEach((checkTid) => {
         if (checkTid && norm && state.wordsByTarget.has(checkTid)) {
           const mp = state.wordsByTarget.get(checkTid);
           Array.from(mp.keys()).forEach((k) => {

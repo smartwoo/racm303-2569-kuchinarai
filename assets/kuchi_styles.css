@@ -1617,36 +1617,55 @@ button, input, select, textarea {
   align-items: center;
 }
 
+/* Unified Flipchart-Style Affinity Wall (Each Theme Cluster Holds BOTH Green Hope & Pink Fear Post-its!) */
+.aff-unified-board {
+  flex: 1;
+  min-height: 0;
+  background: radial-gradient(circle at 50% 20%, #fffdf9 0%, #f9f1e8 100%);
+  border: 2px solid #e7dacb;
+  border-radius: 22px;
+  padding: 14px clamp(12px, 1.8vw, 24px) 18px;
+  overflow-y: auto;
+  box-shadow: inset 0 2px 12px rgba(120, 83, 45, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aff-board-tape-banner {
+  align-self: center;
+  position: relative;
+  padding: 6px 28px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  font-family: Georgia, "Times New Roman", var(--font-heading);
+  font-size: clamp(18px, 1.6vw, 25px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #0f172a;
+  text-align: center;
+}
+
 .aff-clusters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
-  gap: 11px;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
   align-content: start;
-  overflow-y: auto;
-  padding-right: 2px;
 }
 
 .aff-cluster-card {
-  background: #ffffff;
-  border-radius: 18px;
-  border: 1.5px solid #e2e8f0;
-  box-shadow: 0 8px 20px -8px rgba(15, 23, 42, 0.1);
-  padding: 11px 13px 12px;
+  position: relative;
+  background: rgba(255, 255, 255, 0.66);
+  border-radius: 30px 36px 28px 34px;
+  border: 2px dashed rgba(51, 65, 85, 0.38);
+  box-shadow: 0 8px 20px -10px rgba(15, 23, 42, 0.1);
+  padding: 13px 15px 15px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  border-top-width: 4px;
+  gap: 8px;
   animation: zmWordPop 0.3s var(--tv-spring) both;
-}
-
-.aff-cluster-card.is-hopes {
-  border-top-color: #059669;
-  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 38%);
-}
-
-.aff-cluster-card.is-fears {
-  border-top-color: #e11d48;
-  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 38%);
 }
 
 .aff-cluster-top {
@@ -1659,35 +1678,43 @@ button, input, select, textarea {
 .aff-cluster-title {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: clamp(14.5px, 1.05vw, 16.5px);
+  font-size: clamp(15px, 1.08vw, 17.5px);
   font-weight: 800;
   color: #0f172a;
   line-height: 1.28;
 }
 
-.aff-cluster-count {
-  padding: 2px 8px;
+.aff-cluster-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.aff-mini-pill {
+  padding: 2px 7px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
-.aff-cluster-card.is-hopes .aff-cluster-count {
-  background: #d1fae5;
-  color: #065f46;
+.aff-mini-pill.is-hopes {
+  background: #d9f99d;
+  border: 1px solid #84cc16;
+  color: #14532d;
 }
 
-.aff-cluster-card.is-fears .aff-cluster-count {
-  background: #ffe4e6;
-  color: #9f1239;
+.aff-mini-pill.is-fears {
+  background: #fbcfe8;
+  border: 1px solid #f472b6;
+  color: #831843;
 }
 
 .aff-cluster-concept {
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #475569;
   line-height: 1.35;
 }
 
