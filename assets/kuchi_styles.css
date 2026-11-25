@@ -1247,7 +1247,7 @@ button, input, select, textarea {
   border-color: #93c5fd;
 }
 
-/* Rating Scale Sub-Tab inside Zoomed Stage */
+/* Authentic Mentimeter Scale Stage (Matches Reference Curve + 5.0 Circle + Strongly disagree/agree) */
 .zm-rating-wrap {
   position: relative;
   z-index: 3;
@@ -1256,48 +1256,183 @@ button, input, select, textarea {
   flex-direction: column;
   justify-content: center;
   gap: 18px;
-  padding: 14px clamp(20px, 5vw, 80px);
+  padding: 10px clamp(24px, 5vw, 90px) 18px;
 }
 
-.zm-scale-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 22px;
-  padding: clamp(18px, 2.5vw, 32px);
-}
-
-.zm-track {
+.menti-scale-stage {
   position: relative;
-  height: 18px;
+  background: #ffffff;
+  border-radius: 24px;
+  padding: clamp(18px, 2.4vw, 30px) clamp(24px, 3.6vw, 48px);
+  border: 1px solid #eef2f7;
+  box-shadow: 0 12px 32px -14px rgba(15, 23, 42, 0.1);
+}
+
+.menti-scale-row-label {
+  font-family: var(--font-heading);
+  font-size: clamp(18px, 1.45vw, 24px);
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.menti-scale-visual {
+  position: relative;
+  padding-top: 92px;
+  margin: 4px 28px 14px 4px;
+}
+
+.menti-curve-svg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  width: 100%;
+  height: 92px;
+  display: block;
+  pointer-events: none;
+}
+
+.menti-bar-track {
+  position: relative;
+  height: 14px;
   border-radius: 999px;
   background: #e2e8f0;
-  cursor: pointer;
-  margin: 28px 0 16px;
 }
 
-.zm-track-fill {
+.menti-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #60a5fa, #2563eb, #7c3aed);
-  transition: width 0.32s var(--tv-ease);
+  background: #196cff;
+  transition: width 0.36s var(--tv-ease);
 }
 
-.zm-track-knob {
+.menti-score-badge {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 44px;
-  height: 44px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
-  background: #2563eb;
-  color: #fff;
+  background: #196cff;
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 20px;
   font-weight: 800;
-  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid #fff;
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+  border: 3px solid #ffffff;
+  box-shadow: 0 8px 22px rgba(25, 108, 255, 0.34);
+}
+
+.menti-axis-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 28px;
+  color: #64748b;
+  font-size: clamp(15px, 1.15vw, 19px);
+  font-weight: 600;
+}
+
+.menti-axis-left::after {
+  content: "";
+  display: block;
+  width: 124px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: #93c5fd;
+  margin-top: 8px;
+}
+
+.menti-reason-card {
+  padding: 14px 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1.5px solid #bfdbfe;
+  color: #0f172a;
+  font-size: clamp(15px, 1.12vw, 18.5px);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* Slide 4: 21-Person Self-Rating Overview Mini Mentimeter Bars */
+.rt-mini-menti {
+  position: relative;
+  padding-top: 18px;
+  margin: 2px 14px 2px 2px;
+}
+
+.rt-mini-curve {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  width: 100%;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+
+.rt-mini-track {
+  position: relative;
+  height: 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.rt-mini-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #196cff;
+  transition: width 0.3s var(--tv-ease);
+}
+
+.rt-mini-badge {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 28px;
+  height: 24px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #196cff;
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  box-shadow: 0 3px 8px rgba(25, 108, 255, 0.3);
+}
+
+.rt-mini-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+.rt-reason-line {
+  font-size: clamp(11.5px, 0.82vw, 13px);
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.32;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rt-reason-line.is-waiting {
+  color: #94a3b8;
+  font-weight: 500;
+  font-style: italic;
 }
 
 /* ==========================================================================

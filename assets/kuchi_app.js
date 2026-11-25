@@ -912,6 +912,7 @@
     view: initialDirectTarget ? "detail" : detectedRole === "facilitator" ? "lobby" : "overview",
     activeTargetId: initialDirectTarget || TOPIC_HF_BOARD_ID,
     detailTab: "wordcloud", // "wordcloud" | "rating"
+    detailReturnView: "overview", // "overview" | "rating_overview"
     hfDisplayMode: "affinity", // "affinity" (Miro Board เต็มจอ) | "split" (Miro + Cloud) | "cloud"
     hfSelectedPolarity: "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
     overviewReturningFromId: "",
@@ -947,7 +948,8 @@
     phonePickingIdentity: false,
     phoneManualOverride: false,
     phoneJustSubmittedTargetId: "",
-    phoneDraftRating: 4.5,
+    phoneSelfRatedDone: false,
+    phoneDraftRating: 5.0,
     activeEmojiInputId: "phW1",
 
     // Modals
@@ -1113,14 +1115,14 @@
       state.roadmapModalOpen = Boolean(prev.roadmapModalOpen);
       state.resultsModalTargetId = prev.resultsModalTargetId || "";
 
-      if (wasDetail && prev.view === "overview" && !hasAnyOpenModal()) {
-        zoomOutToOverview(false, true);
+      if (wasDetail && (prev.view === "overview" || prev.view === "rating_overview") && !hasAnyOpenModal()) {
+        zoomOutToOverview(false, true, prev.view);
         return;
       }
 
-      if (state.view === "overview" && prev.view === "detail" && !hasAnyOpenModal()) {
+      if ((state.view === "overview" || state.view === "rating_overview") && prev.view === "detail" && !hasAnyOpenModal()) {
         state.detailTab = prev.detailTab || "wordcloud";
-        zoomIntoTarget(prev.activeTargetId || TOPIC_HF_BOARD_ID, null, false, true);
+        zoomIntoTarget(prev.activeTargetId || TOPIC_HF_BOARD_ID, null, false, true, state.detailTab);
         return;
       }
 
@@ -1140,7 +1142,16 @@
       return;
     }
     if (state.view === "detail") {
-      clickerPrevSlide();
+      if (state.activeTargetId === TOPIC_HF_BOARD_ID) {
+        if (state.role === "facilitator") goToLobbySlide1(false);
+        else zoomOutToOverview(false, false, "overview");
+      } else {
+        zoomOutToOverview(false, false, state.detailReturnView || "overview");
+      }
+      return;
+    }
+    if (state.view === "rating_overview") {
+      zoomOutToOverview(false, false, "overview");
       return;
     }
     if (state.role === "facilitator" && state.view === "overview") {
@@ -1164,18 +1175,33 @@
     render();
   }
 
-  function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory) {
+  function goToRatingOverview(isRemoteSync, skipHistory) {
+    if (!isRemoteSync && !skipHistory) pushNavHistory();
+    clearAllModals();
+    state.isAnimatingZoomOut = false;
+    state.view = "rating_overview";
+    state.detailReturnView = "rating_overview";
+    playChime([523.25, 659.25, 783.99], 0.1, "sine", 0.045);
+    if (!isRemoteSync) broadcastMasterPointer(false);
+    render();
+  }
+
+  function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory, forcedTab) {
     if (targetId === TOPIC_HOPES_ID || targetId === TOPIC_FEARS_ID) targetId = TOPIC_HF_BOARD_ID;
     if (!TARGET_MAP.has(targetId)) return;
     if (!isRemoteSync && !skipHistory) {
       pushNavHistory();
     }
+    const fromOverviewKind = state.view === "rating_overview" ? "rating_overview" : "overview";
     clearAllModals();
     state.overviewReturningFromId = "";
     state.isAnimatingZoomOut = false;
     syncDefaultPolarityWithTarget(targetId);
 
-    if (state.view === "overview") {
+    const nextTab = forcedTab || (state.view === "rating_overview" ? "rating" : "wordcloud");
+
+    if (state.view === "overview" || state.view === "rating_overview") {
+      state.detailReturnView = fromOverviewKind;
       captureTileOrigin(targetId, sourceEl);
       const ov = document.querySelector(".tv-overview-stage");
       if (ov) ov.classList.add("is-zooming-away");
@@ -1184,7 +1210,7 @@
       setTimeout(() => {
         state.view = "detail";
         state.activeTargetId = targetId;
-        if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
+        if (!isRemoteSync) state.detailTab = nextTab;
         if (!isRemoteSync) broadcastMasterPointer(false);
         render();
       }, 150);
@@ -1192,31 +1218,34 @@
       setZoomOrigin(window.innerWidth / 2, window.innerHeight / 2);
       state.view = "detail";
       state.activeTargetId = targetId;
-      if (!skipHistory && !isRemoteSync) state.detailTab = "wordcloud";
+      if (!isRemoteSync && forcedTab) state.detailTab = forcedTab;
+      else if (!skipHistory && !isRemoteSync && !forcedTab) state.detailTab = "wordcloud";
       playChime([523.25, 659.25], 0.09, "sine", 0.04);
       if (!isRemoteSync) broadcastMasterPointer(false);
       render();
     }
   }
 
-  function zoomOutToOverview(isRemoteSync, skipHistory) {
+  function zoomOutToOverview(isRemoteSync, skipHistory, targetOverviewKind) {
+    const destView = targetOverviewKind === "rating_overview" ? "rating_overview" : "overview";
     if (hasAnyOpenModal()) {
       if (!isRemoteSync && !skipHistory) pushNavHistory();
       clearAllModals();
-      if (state.view === "overview") {
+      if (state.view === destView) {
         render();
         return;
       }
     }
-    if (state.view === "lobby") {
+    if (state.view === "lobby" || state.view === "overview" || state.view === "rating_overview") {
+      if (state.view === destView) return;
       if (!isRemoteSync && !skipHistory) pushNavHistory();
-      state.view = "overview";
+      state.view = destView;
       playChime([440, 587.33], 0.1, "sine", 0.045);
       if (!isRemoteSync) broadcastMasterPointer(false);
       render();
       return;
     }
-    if (state.view === "overview" || state.isAnimatingZoomOut) return;
+    if (state.isAnimatingZoomOut) return;
     if (!isRemoteSync && !skipHistory) {
       pushNavHistory();
     }
@@ -1230,7 +1259,7 @@
 
     setTimeout(() => {
       state.isAnimatingZoomOut = false;
-      state.view = "overview";
+      state.view = destView;
       state.overviewReturningFromId = prevId;
       if (!isRemoteSync) broadcastMasterPointer(false);
       render();
@@ -1242,41 +1271,45 @@
     }, 260);
   }
 
-  /* Presentation Clicker Exact Flow:
+  /* Presentation Clicker Exact Flow (NO 1-by-1 looping!):
      Slide 1 (QR Lobby)
-       -> Slide 2: HOPES (Post-it เขียวอ่อน + Dynamic Affinity)
-       -> Slide 3: FEARS (Post-it ชมพูอ่อน + Dynamic Affinity)
-       -> Slide 4: Hopes & Fears Conceptualization Board รวม
-       -> Slide 5: Overview 21 คน (Apple TV Grid)
-       -> Slide 6+: พี่สมาร์ท -> นศพ. #1..#20 -> ทริปกุฉินารายณ์ */
+       -> Slide 2: Hopes & Fears (Miro Blank-Space Affinity Diagram)
+       -> Slide 3: ภาพรวมครอบครัวกุฉินารายณ์ 21 คน (Word Cloud Overview)
+       -> Slide 4: หน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง 1–5 & เหตุผล (Rating Overview 21 คน)
+       -> Slide 5: ทริปรถไฟ & รพร.กุฉินารายณ์ */
   function clickerNextSlide() {
     if (state.isAnimatingZoomOut) return;
     if (state.view === "lobby") {
-      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false);
+      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false, "wordcloud");
       return;
     }
     if (state.view === "detail") {
-      const preIdx = PRE_OVERVIEW_IDS.indexOf(state.activeTargetId);
-      if (preIdx >= 0) {
-        if (preIdx < PRE_OVERVIEW_IDS.length - 1) {
-          zoomIntoTarget(PRE_OVERVIEW_IDS[preIdx + 1], null, false, false);
-        } else {
-          zoomOutToOverview(false, false);
-        }
+      if (state.activeTargetId === TOPIC_HF_BOARD_ID) {
+        zoomOutToOverview(false, false, "overview");
         return;
       }
-      const postIdx = POST_OVERVIEW_IDS.indexOf(state.activeTargetId);
-      if (postIdx >= 0 && postIdx < POST_OVERVIEW_IDS.length - 1) {
-        zoomIntoTarget(POST_OVERVIEW_IDS[postIdx + 1], null, false, false);
-      } else {
-        zoomOutToOverview(false, false);
+      if (state.activeTargetId === TOPIC_TRIP_ID) {
+        goToRatingOverview(false, false);
+        return;
       }
+      // Inside a zoomed member card: Word Cloud -> Self-Rating -> Back to 21-Person Rating Overview!
+      if (state.detailTab !== "rating") {
+        pushNavHistory();
+        state.detailTab = "rating";
+        playChime([523.25, 659.25], 0.08, "sine", 0.04);
+        broadcastMasterPointer(false);
+        render();
+        return;
+      }
+      zoomOutToOverview(false, false, "rating_overview");
       return;
     }
     if (state.view === "overview") {
-      const firstId = POST_OVERVIEW_IDS[0] || "m_smart";
-      const firstTile = document.querySelector(`[data-tile-id="${firstId}"]`);
-      zoomIntoTarget(firstId, firstTile, false, false);
+      goToRatingOverview(false, false);
+      return;
+    }
+    if (state.view === "rating_overview") {
+      zoomIntoTarget(TOPIC_TRIP_ID, null, false, false, "wordcloud");
     }
   }
 
@@ -1285,27 +1318,33 @@
     if (state.view === "lobby") return;
 
     if (state.view === "detail") {
-      const preIdx = PRE_OVERVIEW_IDS.indexOf(state.activeTargetId);
-      if (preIdx === 0) {
+      if (state.activeTargetId === TOPIC_HF_BOARD_ID) {
         if (state.role === "facilitator") goToLobbySlide1(false);
-        else zoomOutToOverview(false, false);
+        else zoomOutToOverview(false, false, "overview");
         return;
       }
-      if (preIdx > 0) {
-        zoomIntoTarget(PRE_OVERVIEW_IDS[preIdx - 1], null, false, false);
+      if (state.activeTargetId === TOPIC_TRIP_ID) {
+        goToRatingOverview(false, false);
         return;
       }
-      const postIdx = POST_OVERVIEW_IDS.indexOf(state.activeTargetId);
-      if (postIdx > 0) {
-        zoomIntoTarget(POST_OVERVIEW_IDS[postIdx - 1], null, false, false);
-      } else {
-        zoomOutToOverview(false, false);
+      if (state.detailTab === "rating" && state.detailReturnView === "overview") {
+        pushNavHistory();
+        state.detailTab = "wordcloud";
+        broadcastMasterPointer(false);
+        render();
+        return;
       }
+      zoomOutToOverview(false, false, state.detailReturnView || "overview");
+      return;
+    }
+
+    if (state.view === "rating_overview") {
+      zoomOutToOverview(false, false, "overview");
       return;
     }
 
     if (state.view === "overview") {
-      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false);
+      zoomIntoTarget(TOPIC_HF_BOARD_ID, null, false, false, "wordcloud");
     }
   }
 
@@ -1512,6 +1551,8 @@
     const hostView =
       msg.view === "detail" && TARGET_MAP.has(normalizedIncomingTarget)
         ? "detail"
+        : msg.view === "rating_overview"
+        ? "rating_overview"
         : msg.view === "lobby"
         ? "lobby"
         : "overview";
@@ -1528,8 +1569,8 @@
     // Classroom Sync Rules on Student Phone:
     // - Slide 1 (lobby): Standby check-in
     // - Slide 2 (Hopes & Fears): Open Hopes & Fears Post-it Pad together
-    // - Once Facilitator reaches Overview 21 คน (or zooms into any member result):
-    //   Student phone opens the 21-Person Picker so students can freely pick any peer & type!
+    // - Slide 3 (overview / member wordcloud): Open 21-Person Picker so students freely pick peers & type!
+    // - Slide 4 (rating_overview / member rating): Open Owner Self-Rating for the student's OWN Word Cloud!
     let nextPhoneView = "overview";
     let nextPhoneTarget = state.activeTargetId;
 
@@ -1539,6 +1580,13 @@
     } else if (hostView === "detail" && hostTarget === TOPIC_HF_BOARD_ID) {
       nextPhoneView = "detail";
       nextPhoneTarget = TOPIC_HF_BOARD_ID;
+      state.phonePickedTargetId = "";
+    } else if (hostView === "rating_overview" || (hostView === "detail" && hostTab === "rating" && hostTarget !== TOPIC_TRIP_ID)) {
+      nextPhoneView = "rating_overview";
+      state.phonePickedTargetId = "";
+    } else if (hostView === "detail" && hostTarget === TOPIC_TRIP_ID) {
+      nextPhoneView = "detail";
+      nextPhoneTarget = TOPIC_TRIP_ID;
       state.phonePickedTargetId = "";
     } else {
       nextPhoneView = "overview";
@@ -1629,12 +1677,14 @@
         if (msg.view === "detail" && TARGET_MAP.has(expTarget)) {
           state.detailTab = msg.detailTab || "wordcloud";
           if (state.view !== "detail" || state.activeTargetId !== expTarget) {
-            zoomIntoTarget(expTarget, null, true, true);
+            zoomIntoTarget(expTarget, null, true, true, state.detailTab);
           } else {
             renderPreservingFocus();
           }
-        } else if (state.view === "detail") {
-          zoomOutToOverview(true, true);
+        } else if (msg.view === "rating_overview") {
+          goToRatingOverview(true, true);
+        } else if (state.view === "detail" || state.view === "rating_overview") {
+          zoomOutToOverview(true, true, "overview");
         }
       }
       return;
@@ -1709,7 +1759,11 @@
         ) {
           playChime([587.33, 880], 0.09, "sine", 0.04);
         }
-        if (state.role !== "participant" || state.phoneJustSubmittedTargetId) {
+        if (
+          state.role !== "participant" ||
+          state.phoneJustSubmittedTargetId ||
+          (state.view === "rating_overview" && state.myMemberUid === tid)
+        ) {
           renderPreservingFocus();
         }
       }
@@ -2395,6 +2449,46 @@
     `;
   }
 
+  function getMemberSelfRatingInfo(uid) {
+    const rMap = state.ratingsByTarget.get(uid);
+    if (!rMap || rMap.size === 0) {
+      return { hasScore: false, score: 0, scorePct: 0, reason: "", nick: "", record: null };
+    }
+    const list = Array.from(rMap.values());
+    const ownerRec = list.find((r) => r && (r.isOwner || r.memberUid === uid));
+    const chosen = ownerRec || list[list.length - 1];
+    if (!chosen || !Number.isFinite(Number(chosen.score))) {
+      return { hasScore: false, score: 0, scorePct: 0, reason: "", nick: "", record: null };
+    }
+    const sc = Math.max(1, Math.min(5, Number(chosen.score)));
+    return {
+      hasScore: true,
+      score: sc,
+      scorePct: ((sc - 1) / 4) * 100,
+      reason: String(chosen.reason || "").trim(),
+      nick: String(chosen.nick || ""),
+      record: chosen
+    };
+  }
+
+  function buildMentimeterCurveSvg(scoreVal, cssClass) {
+    const sc = Number(scoreVal || 0);
+    if (sc <= 0) return "";
+    const mu = ((sc - 1) / 4) * 1000;
+    const sigma = 115;
+    const pts = ["M 0 120"];
+    for (let x = 0; x <= 1000; x += 10) {
+      const z = (x - mu) / sigma;
+      const g = Math.exp(-0.5 * z * z);
+      const y = 120 - g * 108;
+      pts.push(`L ${x} ${y.toFixed(1)}`);
+    }
+    pts.push("L 1000 120 Z");
+    return `<svg class="${esc(cssClass || "menti-curve-svg")}" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true"><path d="${pts.join(
+      " "
+    )}" fill="#9ec5ff" fill-opacity="0.72"/></svg>`;
+  }
+
   function renderTopBarHtml() {
     const isFac = state.role === "facilitator";
     const myMem = MEMBER_MAP.get(state.myMemberUid);
@@ -2403,6 +2497,7 @@
       : state.myGuestName || "Login รหัส 3 ตัว";
     const onlineMembers = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
     const isOnHfBoard = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID;
+    const isOnRatingOv = state.view === "rating_overview";
 
     return `
       <div class="tv-topbar-wrap">
@@ -2413,7 +2508,11 @@
               <span class="tv-logo-badge${isFac ? " is-fac" : ""}">${isFac ? "FAC" : "KG"}</span>
               <span class="tv-brand-titles">
                 <span class="tv-brand-main">${isFac ? "Facilitator จอใหญ่ · Kuchi Gang 2569" : "Kuchi Gang 2569 · รพร.กุฉินารายณ์ (21 คน)"}</span>
-                <span class="tv-brand-sub">${isFac ? "Slide 1 QR → Slide 2 Hopes & Fears → ภาพรวม 21 คน (กด Clicker ซ้าย/ขวา)" : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อซูมถามโจทย์รายคน"}</span>
+                <span class="tv-brand-sub">${
+                  isFac
+                    ? "Slide 1 QR → Slide 2 Hopes & Fears → Slide 3 Word Cloud 21 คน → Slide 4 ให้คะแนนสะท้อนตัวตน"
+                    : "กลุ่ม อ.ณัฐวุฒิ (พี่สมาร์ท) · แตะการ์ดเพื่อดูผลรายคน"
+                }</span>
               </span>
             </button>
           </div>
@@ -2450,6 +2549,16 @@
               title="Slide 2: บอร์ด Hopes & Fears Affinity Conceptualization"
             >
               📌 <span>Hopes &amp; Fears</span>
+            </button>
+
+            <button
+              type="button"
+              class="tv-pill-btn ${isOnRatingOv ? "is-primary" : ""}"
+              style="${!isOnRatingOv ? "background:#eff6ff;border-color:#93c5fd;color:#1d4ed8" : ""}"
+              data-act="go-rating-overview"
+              title="Slide 4: หน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง (1–5) & เหตุผล"
+            >
+              ⭐ <span>คะแนนสะท้อนตัวตน</span>
             </button>
 
             <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀</button>
@@ -2583,10 +2692,17 @@
           <div class="tv-overview-headline">
             <h1>ภาพรวมครอบครัวกุฉินารายณ์ 2569 (${MEMBERS.length} คน)</h1>
             <span class="tv-overview-hint">
-              แตะการ์ดสมาชิกเพื่อ <strong>Zoom In</strong> ถามโจทย์สะท้อนตัวตนรายคน · หรือกด Clicker <strong>ถัดไป ▶</strong> เพื่อเรียงตามลำดับ
+              แตะการ์ดสมาชิกเพื่อ <strong>Zoom In</strong> ดู Word Cloud รายคน · หรือกด <strong>ถัดไป ▶</strong> เพื่อไปหน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง (1–5) &amp; เหตุผล
             </span>
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <button
+              type="button"
+              class="tv-pill-btn is-primary"
+              data-act="go-rating-overview"
+            >
+              ⭐ ถัดไป: ให้คะแนนสะท้อนตัวตน (21 คน) ▶
+            </button>
             <button
               type="button"
               class="tv-pill-btn"
@@ -2655,8 +2771,118 @@
                   </div>
                 </div>
                 <div class="tv-tile-words${topPreview ? "" : " is-empty"}">
-                  ${topPreview ? esc(topPreview) : "แตะเพื่อซูมถามโจทย์ ↗"}
+                  ${topPreview ? esc(topPreview) : "แตะเพื่อดู Word Cloud ↗"}
                 </div>
+              </button>
+            `;
+          }).join("")}
+        </section>
+      </main>
+    `;
+  }
+
+  /* --- Slide 4: 21-Person Self-Rating Overview (หน้าเห็นแต่ละคนให้คะแนน Word Cloud ของตัวเอง 1–5 & เหตุผล) --- */
+  function renderRatingOverviewHtml() {
+    const onlineUids = new Set(Array.from(state.presence.values()).map((p) => p.memberUid).filter(Boolean));
+    let ratedCount = 0;
+    let ratedSum = 0;
+    MEMBERS.forEach((m) => {
+      const info = getMemberSelfRatingInfo(m.uid);
+      if (info.hasScore) {
+        ratedCount += 1;
+        ratedSum += info.score;
+      }
+    });
+    const groupAvg = ratedCount > 0 ? ratedSum / ratedCount : 0;
+
+    return `
+      <main class="tv-overview-stage${state.overviewReturningFromId ? " is-zooming-back" : ""}">
+        <div class="tv-overview-banner">
+          <div class="tv-overview-headline" style="max-width:980px">
+            <h1 style="font-size:clamp(16.5px,1.5vw,24px);line-height:1.3">
+              ถ้าให้ <span style="color:#196cff">'แต่ละคน'</span> ให้คะแนนกับ Word Cloud ที่เพื่อนๆ สะท้อนมา คิดว่าตรงกับตัวตนที่แท้จริงมากน้อยแค่ไหน? และทำไมถึงให้คะแนนเช่นนั้น?
+            </h1>
+            <span class="tv-overview-hint">
+              มือถือของแต่ละคนกำลังเปิดหน้าให้คะแนน Word Cloud ของตัวเอง (1.0 Strongly disagree – 5.0 Strongly agree) · <strong>แตะการ์ดของแต่ละคนเพื่อขยายดูกราฟคะแนน &amp; เหตุผลเต็มจอ</strong>
+            </span>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            ${
+              !isTeacherResultOnly() && state.myMemberUid && MEMBER_MAP.has(state.myMemberUid)
+                ? `<button type="button" class="tv-pill-btn is-primary" data-act="zoom-in-rating" data-target-id="${esc(state.myMemberUid)}">⭐ ให้คะแนน Word Cloud ของฉัน</button>`
+                : ""
+            }
+            <button type="button" class="tv-pill-btn" data-act="go-overview">
+              ⊞ กลับหน้า Word Cloud 21 คน
+            </button>
+            <span style="font-size:12.5px;font-weight:800;color:#196cff;background:#ffffff;padding:5px 12px;border-radius:999px;border:1.5px solid #93c5fd">
+              ⭐ ให้คะแนนแล้ว ${ratedCount}/${MEMBERS.length} คน${ratedCount > 0 ? ` · เฉลี่ย ${groupAvg.toFixed(2)}/5.0` : ""}
+            </span>
+          </div>
+        </div>
+
+        <section class="tv-grid" id="tvOverviewGrid" aria-label="คะแนนสะท้อนตัวตนและเหตุผลของสมาชิกทั้ง 21 คน">
+          ${MEMBERS.map((m, idx) => {
+            const agg = getAggregatedWords(m.uid);
+            const rInfo = getMemberSelfRatingInfo(m.uid);
+            const topPreview = agg.items
+              .slice(0, 3)
+              .map((w) => w.text)
+              .join(" · ");
+            const badgeNum = m.kind === "student" ? m.shortNo : "AJ";
+            const isOnline = onlineUids.has(m.uid);
+            const isReturned = state.overviewReturningFromId === m.uid;
+            const isDpad = state.dpadIndex === idx;
+
+            return `
+              <button
+                type="button"
+                class="tv-tile${rInfo.hasScore ? " is-has-words" : ""}${isReturned ? " is-just-returned" : ""}${isDpad ? " is-dpad-focus" : ""}"
+                data-tile-id="${esc(m.uid)}"
+                data-grid-idx="${idx}"
+                data-act="zoom-in-rating"
+                data-target-id="${esc(m.uid)}"
+              >
+                <div class="tv-tile-head">
+                  <div class="tv-tile-avatar-wrap">
+                    <img src="${esc(m.photo)}" alt="${esc(m.fullName)}" loading="eager" />
+                    <span class="tv-tile-num-pill">${esc(badgeNum)}</span>
+                    ${isOnline ? `<span class="tv-tile-online-dot" title="เช็คอินออนไลน์แล้ว"></span>` : ""}
+                  </div>
+                  <div class="tv-tile-idbox">
+                    <div class="tv-tile-toprow">
+                      <span class="tv-tile-nick">${esc(m.nickname)}</span>
+                      <span class="tv-tile-count-badge">☁️${agg.totalSubmissions}</span>
+                    </div>
+                    <div class="tv-tile-sub">${esc(m.firstName)}</div>
+                  </div>
+                </div>
+
+                ${
+                  rInfo.hasScore
+                    ? `
+                      <div class="rt-mini-menti">
+                        ${buildMentimeterCurveSvg(rInfo.score, "rt-mini-curve")}
+                        <div class="rt-mini-track">
+                          <div class="rt-mini-fill" style="width:${rInfo.scorePct}%"></div>
+                          <span class="rt-mini-badge" style="left:${rInfo.scorePct}%">${rInfo.score.toFixed(1)}</span>
+                        </div>
+                        <div class="rt-mini-axis"><span>Strongly disagree</span><span>Strongly agree</span></div>
+                      </div>
+                      <div class="rt-reason-line">
+                        ${rInfo.reason ? `💬 "${esc(rInfo.reason)}"` : topPreview ? `☁️ ${esc(topPreview)}` : "แตะดูกราฟคะแนนเต็มจอ ↗"}
+                      </div>
+                    `
+                    : `
+                      <div class="rt-mini-menti" style="padding-top:8px">
+                        <div class="rt-mini-track" style="border:1px dashed #cbd5e1;background:#f8fafc"></div>
+                        <div class="rt-mini-axis"><span>Strongly disagree</span><span>รอให้คะแนน...</span></div>
+                      </div>
+                      <div class="rt-reason-line is-waiting">
+                        ${topPreview ? `☁️ ${esc(topPreview)}` : "รอเจ้าตัวให้คะแนน & เหตุผล..."}
+                      </div>
+                    `
+                }
               </button>
             `;
           }).join("")}
@@ -2797,20 +3023,26 @@
     const agg = getAggregatedWords(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id);
     const positioned = !isHfBoard ? computeAdaptiveWordCloud(agg.items, false) : [];
 
-    const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
-    const ratings = Array.from(rMap.values());
-    const ownerRec = ratings.find((r) => r.isOwner || (m && r.memberUid === m.uid));
-    const avg = ratings.length ? ratings.reduce((acc, r) => acc + Number(r.score || 0), 0) / ratings.length : 0;
-    const displayScore = ownerRec ? Number(ownerRec.score) : avg;
-    const scorePct = displayScore > 0 ? ((displayScore - 1) / 4) * 100 : 0;
+    const rInfo = m ? getMemberSelfRatingInfo(m.uid) : { hasScore: false, score: 0, scorePct: 0, reason: "" };
+    const displayScore = rInfo.score;
+    const scorePct = rInfo.scorePct;
+    const isRatingTab = Boolean(m && state.detailTab === "rating");
 
     const bigQuestionHtml = isHfBoard
       ? `<span class="zm-highlight-name" style="background:linear-gradient(135deg,#dbeafe,#ede9fe);color:#1e3a8a">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?`
+      : isRatingTab && m
+      ? `ถ้าให้ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้คะแนนกับ Word Cloud ที่เพื่อนๆ สะท้อนมา คิดว่าตรงกับตัวตนที่แท้จริงมากน้อยแค่ไหน? และทำไมถึงให้คะแนนเช่นนั้น?`
       : m
       ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
       : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์ จ.กาฬสินธุ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
 
-    const nextBtnLabel = isHfBoard ? "ถัดไป: ภาพรวม 21 คน ▶" : "คนถัดไป ▶";
+    const nextBtnLabel = isHfBoard
+      ? "ถัดไป: ภาพรวม 21 คน ▶"
+      : isRatingTab
+      ? "กลับหน้าคะแนนทั้ง 21 คน ▶"
+      : m
+      ? "ดูคะแนนสะท้อนตัวตน ▶"
+      : "กลับหน้าคะแนน 21 คน ▶";
 
     return `
       <main class="tv-zoom-stage-outer">
@@ -2908,75 +3140,67 @@
               : state.detailTab === "rating" && m
               ? `
                 <div class="zm-rating-wrap">
-                  <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-                    <strong style="font-size:14px;color:#475569">☁️ คำสะท้อนจากเพื่อนๆ:</strong>
-                    ${
-                      agg.items.length
-                        ? agg.items
-                            .slice(0, 14)
-                            .map(
-                              (w, i) =>
-                                `<span style="padding:4px 11px;border-radius:999px;background:#eff6ff;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[i % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
-                            )
-                            .join("")
-                        : `<span style="color:#94a3b8;font-size:13.5px">ยังไม่มีคำสะท้อนใน Word Cloud</span>`
-                    }
+                  <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;justify-content:space-between">
+                    <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+                      <strong style="font-size:14px;color:#475569">☁️ คำสะท้อนจากเพื่อนๆ (${agg.totalSubmissions} คำ):</strong>
+                      ${
+                        agg.items.length
+                          ? agg.items
+                              .slice(0, 16)
+                              .map(
+                                (w, i) =>
+                                  `<span style="padding:4px 11px;border-radius:999px;background:#eff6ff;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[i % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
+                              )
+                              .join("")
+                          : `<span style="color:#94a3b8;font-size:13.5px">ยังไม่มีคำสะท้อนใน Word Cloud</span>`
+                      }
+                    </div>
+                    <button type="button" class="tv-pill-btn" data-act="go-rating-overview">⭐ กลับหน้าคะแนนทั้ง 21 คน</button>
                   </div>
 
-                  <div class="zm-scale-box">
-                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-                      <strong style="font-size:clamp(16px,1.4vw,22px)">คิดว่าภาพรวม Word Cloud สะท้อนตัวตนจริงของ '${esc(m.mentiName)}' ได้ตรงแค่ไหน?</strong>
-                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <div class="menti-scale-stage">
+                    <div class="menti-scale-row-label">คะแนน</div>
+                    <div class="menti-scale-visual">
+                      ${rInfo.hasScore ? buildMentimeterCurveSvg(displayScore, "menti-curve-svg") : ""}
+                      <div class="menti-bar-track">
+                        <div class="menti-bar-fill" style="width:${rInfo.hasScore ? scorePct : 0}%"></div>
                         ${
-                          ownerRec
-                            ? `<span style="padding:5px 13px;border-radius:999px;background:#fef3c7;border:1.5px solid #f59e0b;color:#92400e;font-weight:800;font-size:14px">★ คะแนนเจ้าของชื่อ: ${Number(ownerRec.score).toFixed(1)} / 5.0</span>`
-                            : ""
-                        }
-                        ${
-                          ratings.length > 0
-                            ? `<span style="padding:5px 13px;border-radius:999px;background:#eff6ff;border:1.5px solid #3b82f6;color:#1e40af;font-weight:800;font-size:14px">👥 เฉลี่ยทั้งห้อง ${avg.toFixed(2)} (${ratings.length} คน)</span>`
+                          rInfo.hasScore
+                            ? `<div class="menti-score-badge" style="left:${scorePct}%">${displayScore.toFixed(1)}</div>`
                             : ""
                         }
                       </div>
                     </div>
-
-                    <div class="zm-track" data-act="click-rating-bar" data-target-id="${esc(tObj.id)}">
-                      <div class="zm-track-fill" style="width:${displayScore > 0 ? scorePct : 0}%"></div>
-                      ${displayScore > 0 ? `<div class="zm-track-knob" style="left:${scorePct}%">${displayScore.toFixed(1)}</div>` : ""}
-                    </div>
-
-                    <div style="display:flex;justify-content:space-between;font-weight:700;color:#475569;font-size:14px">
-                      <span>1 · Strongly disagree</span>
-                      <span>3 · Neutral</span>
-                      <span>5 · Strongly agree</span>
-                    </div>
-
-                    ${
-                      ratings.some((r) => r.reason)
-                        ? `
-                          <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px">
-                            ${ratings
-                              .filter((r) => r.reason)
-                              .slice(-8)
-                              .map(
-                                (r) =>
-                                  `<div style="padding:6px 12px;border-radius:12px;background:#ffffff;border:1px solid #e2e8f0;font-size:13px"><strong>${esc(r.nick)} (${Number(r.score).toFixed(1)}):</strong> ${esc(r.reason)}</div>`
-                              )
-                              .join("")}
-                          </div>
-                        `
-                        : ""
-                    }
-
-                    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap">
-                      ${[1, 2, 3, 3.5, 4, 4.5, 5]
-                        .map(
-                          (sc) =>
-                            `<button type="button" class="tv-pill-btn ${displayScore === sc ? "is-primary" : ""}" data-act="quick-rate" data-target-id="${esc(tObj.id)}" data-score="${sc}">ให้ ${sc}</button>`
-                        )
-                        .join("")}
+                    <div class="menti-axis-labels">
+                      <span class="menti-axis-left">Strongly disagree</span>
+                      <span class="menti-axis-right">Strongly agree</span>
                     </div>
                   </div>
+
+                  ${
+                    rInfo.reason
+                      ? `
+                        <div class="menti-reason-card">
+                          💬 <strong>เหตุผลของ '${esc(m.nickname)}':</strong> "${esc(rInfo.reason)}"
+                        </div>
+                      `
+                      : !rInfo.hasScore
+                      ? `<div style="text-align:center;color:#94a3b8;font-size:14.5px;font-weight:600">รอ '${esc(m.nickname)}' ให้คะแนนและเหตุผลจากมือถือ...</div>`
+                      : ""
+                  }
+
+                  ${
+                    !isTeacherResultOnly() && state.myMemberUid === m.uid
+                      ? `
+                        <form data-form="phone-send-rating" data-target-id="${esc(m.uid)}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:12px 16px;border-radius:18px;border:1px solid #cbd5e1">
+                          <strong style="font-size:14px;color:#1e3a8a">⭐ ให้คะแนนของคุณ (1–5):</strong>
+                          <input type="range" name="score" min="1" max="5" step="0.5" value="${rInfo.hasScore ? displayScore : 5}" style="width:160px;accent-color:#196cff" />
+                          <input type="text" name="reason" class="zm-word-input" style="height:38px" maxlength="140" placeholder="" aria-label="เหตุผลที่ให้คะแนน" value="${esc(rInfo.reason)}" />
+                          <button type="submit" class="zm-send-btn" style="height:38px">บันทึกคะแนน</button>
+                        </form>
+                      `
+                      : ""
+                  }
                 </div>
               `
               : `
@@ -3118,9 +3342,109 @@
       );
     }
 
+    // Step 2B-Rating: When Facilitator moves to Slide 4 (rating_overview), Student Phone opens THEIR OWN Word Cloud Self-Rating!
+    if (state.view === "rating_overview" && !state.phonePickedTargetId && myMem) {
+      const myCloudAgg = getAggregatedWords(myMem.uid);
+      const myRInfo = getMemberSelfRatingInfo(myMem.uid);
+      const currentVal = myRInfo.hasScore ? myRInfo.score : state.phoneDraftRating;
+
+      return (
+        topBar +
+        `
+          <main class="ph-shell">
+            <section class="ph-card">
+              <div class="ph-sync-banner">
+                <span>⭐ ให้คะแนน Word Cloud ของตัวคุณเอง!</span>
+                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-open-peer-grid-temp">พิมพ์ให้เพื่อนเพิ่ม</button>
+              </div>
+
+              <div class="ph-person-banner">
+                <img src="${esc(myMem.photo)}" alt="${esc(myMem.nickname)}" />
+                <div style="min-width:0">
+                  <div style="font-size:12px;font-weight:800;color:#196cff">🌟 Word Cloud ของ '${esc(myMem.mentiName)}'</div>
+                  <div style="font-size:13px;color:#475569">เพื่อนๆ ส่งคำสะท้อนให้คุณทั้งหมด <strong>${myCloudAgg.totalSubmissions} คำ</strong></div>
+                </div>
+              </div>
+
+              <div style="padding:12px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                ${
+                  myCloudAgg.items.length
+                    ? myCloudAgg.items
+                        .map(
+                          (w, idx) =>
+                            `<span style="padding:4px 10px;border-radius:999px;background:#ffffff;border:1px solid #cbd5e1;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[idx % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
+                        )
+                        .join("")
+                    : `<span style="font-size:13.5px;color:#94a3b8">กำลังรอคำสะท้อนจากเพื่อนๆ...</span>`
+                }
+              </div>
+
+              <h1 class="ph-big-question" style="font-size:17.5px">
+                ถ้าให้ <span class="zm-highlight-name">'${esc(myMem.mentiName)}'</span> ให้คะแนนกับ Word Cloud ที่เพื่อนๆ สะท้อนมา คิดว่าตรงกับตัวตนที่แท้จริงมากน้อยแค่ไหน? และทำไมถึงให้คะแนนเช่นนั้น?
+              </h1>
+
+              ${
+                state.phoneSelfRatedDone && myRInfo.hasScore
+                  ? `
+                    <div class="ph-standby-box" style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:20px;padding:20px 16px">
+                      <div style="width:56px;height:56px;border-radius:50%;background:#196cff;color:#fff;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(25,108,255,0.3)">
+                        ${myRInfo.score.toFixed(1)}
+                      </div>
+                      <strong style="font-size:18px;color:#0f172a">ส่งคะแนนขึ้นจอใหญ่เรียบร้อยแล้ว!</strong>
+                      ${myRInfo.reason ? `<p style="margin:0;font-size:14px;color:#1e293b">💬 "${esc(myRInfo.reason)}"</p>` : ""}
+                      <button type="button" class="tv-pill-btn" style="margin-top:8px" data-act="phone-edit-self-rating">✏️ แก้ไขคะแนน / เหตุผล</button>
+                    </div>
+                  `
+                  : `
+                    <form data-form="phone-send-rating" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
+                      <div style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:18px;padding:14px 16px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                          <span style="font-size:13.5px;font-weight:800;color:#334155">คะแนนความตรงกับตัวตน</span>
+                          <span id="phRatingReadout" style="font-size:26px;font-weight:900;color:#196cff">${currentVal.toFixed(1)} <span style="font-size:14px;color:#64748b">/ 5.0</span></span>
+                        </div>
+                        <input
+                          type="range"
+                          id="phRatingSlider"
+                          name="score"
+                          min="1"
+                          max="5"
+                          step="0.5"
+                          value="${currentVal}"
+                          style="width:100%;margin:8px 0 6px;accent-color:#196cff;height:28px;cursor:pointer"
+                        />
+                        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b">
+                          <span>1.0 · Strongly disagree</span>
+                          <span>5.0 · Strongly agree</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div class="ph-input-label"><span>ทำไมถึงให้คะแนนเช่นนั้น?</span></div>
+                        <textarea
+                          id="phReasonInput"
+                          name="reason"
+                          class="ph-postit-textarea"
+                          style="min-height:74px;background:#f8fafc;border-color:#cbd5e1"
+                          maxlength="140"
+                          placeholder=""
+                        >${esc(myRInfo.reason || "")}</textarea>
+                      </div>
+
+                      <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#196cff,#2563eb)">
+                        ⭐ ส่งคะแนนและเหตุผลขึ้นจอใหญ่!
+                      </button>
+                    </form>
+                  `
+              }
+            </section>
+          </main>
+        `
+      );
+    }
+
     // Step 2B: Once Facilitator reaches Overview 21 คน (or browses member results), OR manual mode -> Student Picker Grid!
     const isOnHfSlide = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID && !state.phonePickedTargetId;
-    if (!isOnHfSlide && !state.phonePickedTargetId) {
+    if (!isOnHfSlide && state.view !== "detail" && !state.phonePickedTargetId) {
       const hostObj = state.hostView === "detail" ? TARGET_MAP.get(state.hostTargetId) : null;
       const hostMem = hostObj && hostObj.member ? hostObj.member : null;
       const canJumpHostMem = Boolean(hostMem && (!state.myMemberUid || state.myMemberUid !== hostMem.uid));
@@ -3843,6 +4167,8 @@
         ? renderFacilitatorLobbyHtml()
         : state.view === "detail"
         ? renderZoomedDetailHtml()
+        : state.view === "rating_overview"
+        ? renderRatingOverviewHtml()
         : renderOverviewHtml();
 
     root.innerHTML = renderTopBarHtml() + stageHtml + renderModalsHtml();
@@ -3906,9 +4232,16 @@
       const tid = btn.getAttribute("data-target-id");
       const gIdx = Number(btn.getAttribute("data-grid-idx"));
       if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
-      zoomIntoTarget(tid, btn, false, false);
+      zoomIntoTarget(tid, btn, false, false, "wordcloud");
+    } else if (act === "zoom-in-rating") {
+      const tid = btn.getAttribute("data-target-id");
+      const gIdx = Number(btn.getAttribute("data-grid-idx"));
+      if (Number.isFinite(gIdx)) state.dpadIndex = gIdx;
+      zoomIntoTarget(tid, btn, false, false, "rating");
+    } else if (act === "go-rating-overview") {
+      goToRatingOverview(false, false);
     } else if (act === "go-overview") {
-      zoomOutToOverview(false, false);
+      zoomOutToOverview(false, false, "overview");
     } else if (act === "set-hf-polarity") {
       const pol = btn.getAttribute("data-polarity") === "fears" ? "fears" : "hopes";
       state.hfSelectedPolarity = pol;
@@ -4003,6 +4336,13 @@
         const el = document.getElementById("phHfInput") || document.getElementById("phW1");
         if (el) el.focus();
       }, 40);
+    } else if (act === "phone-edit-self-rating") {
+      state.phoneSelfRatedDone = false;
+      render();
+    } else if (act === "phone-open-peer-grid-temp") {
+      state.view = "overview";
+      state.phonePickedTargetId = "";
+      render();
     } else if (act === "phone-pick-peer") {
       const tid = btn.getAttribute("data-target-id") || "";
       if (!tid || !TARGET_MAP.has(tid)) return;
@@ -4202,6 +4542,7 @@
       const tid = form.getAttribute("data-target-id");
       const sc = form.elements.score ? Number(form.elements.score.value) : state.phoneDraftRating;
       const rs = form.elements.reason ? form.elements.reason.value : "";
+      state.phoneSelfRatedDone = true;
       submitRating(tid, sc, rs);
     }
   });
@@ -4224,7 +4565,7 @@
       }
       if (state.view === "detail") {
         ev.preventDefault();
-        zoomOutToOverview(false, false);
+        zoomOutToOverview(false, false, state.detailReturnView || "overview");
       }
       return;
     }
@@ -4263,7 +4604,7 @@
       return;
     }
 
-    if (state.view === "overview") {
+    if (state.view === "overview" || state.view === "rating_overview") {
       const gridEl = document.getElementById("tvOverviewGrid");
       const totalTiles = MEMBERS.length;
       let cols = 7;
