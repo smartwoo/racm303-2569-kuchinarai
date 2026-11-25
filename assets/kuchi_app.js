@@ -64,22 +64,6 @@
 
   const TARGET_LIST = [
     {
-      id: TOPIC_HOPES_ID,
-      isTopic: true,
-      isHfMode: true,
-      topicKind: "hopes",
-      member: null,
-      shortTitle: "HOPES · ความหวังต่อ COMMED"
-    },
-    {
-      id: TOPIC_FEARS_ID,
-      isTopic: true,
-      isHfMode: true,
-      topicKind: "fears",
-      member: null,
-      shortTitle: "FEARS · ความกังวลต่อ COMMED"
-    },
-    {
       id: TOPIC_HF_BOARD_ID,
       isTopic: true,
       isHfMode: true,
@@ -109,6 +93,9 @@
       }
     ]);
   const TARGET_MAP = new Map(TARGET_LIST.map((t) => [t.id, t]));
+  function isValidWordBucket(id) {
+    return TARGET_MAP.has(id) || id === TOPIC_HOPES_ID || id === TOPIC_FEARS_ID;
+  }
 
   /* Sample Demo Inputs for Testing Dynamic Affinity Conceptualization */
   const DEMO_HOPES_SAMPLES = [
@@ -1181,6 +1168,7 @@
   }
 
   function zoomIntoTarget(targetId, sourceEl, isRemoteSync, skipHistory) {
+    if (targetId === TOPIC_HOPES_ID || targetId === TOPIC_FEARS_ID) targetId = TOPIC_HF_BOARD_ID;
     if (!TARGET_MAP.has(targetId)) return;
     if (!isRemoteSync && !skipHistory) {
       pushNavHistory();
@@ -1363,7 +1351,7 @@
       const parsed = JSON.parse(raw);
       if (parsed && parsed.words) {
         Object.keys(parsed.words).forEach((tid) => {
-          if (!TARGET_MAP.has(tid)) return;
+          if (!isValidWordBucket(tid)) return;
           const mp = new Map();
           (parsed.words[tid] || []).forEach((item) => {
             if (item && item.subId && item.text) mp.set(item.subId, item);
@@ -1554,7 +1542,7 @@
     let changed = false;
     if (msg.words && typeof msg.words === "object") {
       Object.keys(msg.words).forEach((tid) => {
-        if (!TARGET_MAP.has(tid)) return;
+        if (!isValidWordBucket(tid)) return;
         if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
         const mp = state.wordsByTarget.get(tid);
         (msg.words[tid] || []).forEach((w) => {
@@ -1607,10 +1595,12 @@
           state.sessionId = msg.sessionId;
           loadSessionStore(state.sessionId);
         }
-        if (msg.view === "detail" && TARGET_MAP.has(msg.targetId)) {
+        const expTarget =
+          msg.targetId === TOPIC_HOPES_ID || msg.targetId === TOPIC_FEARS_ID ? TOPIC_HF_BOARD_ID : msg.targetId;
+        if (msg.view === "detail" && TARGET_MAP.has(expTarget)) {
           state.detailTab = msg.detailTab || "wordcloud";
-          if (state.view !== "detail" || state.activeTargetId !== msg.targetId) {
-            zoomIntoTarget(msg.targetId, null, true, true);
+          if (state.view !== "detail" || state.activeTargetId !== expTarget) {
+            zoomIntoTarget(expTarget, null, true, true);
           } else {
             renderPreservingFocus();
           }
@@ -1675,7 +1665,7 @@
     if (msg.type === "word_add") {
       const tid = String(msg.targetId || "");
       const item = msg.item;
-      if (!tid || !TARGET_MAP.has(tid) || !item || !item.subId || !item.text) return;
+      if (!tid || !isValidWordBucket(tid) || !item || !item.subId || !item.text) return;
       if (!state.wordsByTarget.has(tid)) state.wordsByTarget.set(tid, new Map());
       const mp = state.wordsByTarget.get(tid);
       if (!mp.has(item.subId)) {
@@ -2015,7 +2005,7 @@
   /* ---------- 10. Submit Post-it / Word(s) & Rating ---------- */
   function submitSingleWordPacket(targetId, rawText) {
     const cleaned = String(rawText || "").trim().replace(/\s+/g, " ").slice(0, 72);
-    if (!cleaned || !targetId || !TARGET_MAP.has(targetId)) return false;
+    if (!cleaned || !targetId || !isValidWordBucket(targetId)) return false;
 
     // Self-slide lock: logged-in member cannot submit words about themselves!
     const tObj = TARGET_MAP.get(targetId);
@@ -3874,7 +3864,7 @@
       state.phoneManualOverride = false;
       render();
     } else if (act === "phone-manual-target") {
-      const tid = btn.getAttribute("data-target-id") || TOPIC_HOPES_ID;
+      const tid = btn.getAttribute("data-target-id") || TOPIC_HF_BOARD_ID;
       state.activeTargetId = tid;
       syncDefaultPolarityWithTarget(tid);
       state.view = "detail";
