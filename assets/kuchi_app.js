@@ -14,7 +14,7 @@
 (function () {
   "use strict";
 
-  const APP_BUILD_VER = "20261126tv12";
+  const APP_BUILD_VER = "20261126tv14";
   try {
     if (typeof window.fetch === "function") {
       window
@@ -936,6 +936,8 @@
     hfSelectedPolarity: "hopes", // "hopes" (เขียวอ่อน) | "fears" (ชมพูอ่อน)
     overviewReturningFromId: "",
     isAnimatingZoomOut: false,
+    justEnteredDetail: false,
+    pcComposeModalOpen: false,
     dpadIndex: 0,
 
     // Miro-style Free-Boundary Pan/Zoom & Auto-Fit Camera State
@@ -960,9 +962,13 @@
     // Participant / Phone Controller State
     followHost: detectedRole === "participant",
     hasSeenFacilitator: false,
+    activeHostCliId: "",
+    activeHostTs: 0,
     hostView: "lobby",
     hostTargetId: TOPIC_HF_BOARD_ID,
     hostDetailTab: "wordcloud",
+    phoneComposeOpen: false,
+    phoneComposeMode: "", // "hf" | "peer" | "rating" | "team_msg" | "trip"
     phonePickedTargetId: "",
     phonePickingIdentity: false,
     phoneManualOverride: false,
@@ -1085,10 +1091,13 @@
   }
 
   function hasAnyOpenModal() {
-    return Boolean(state.qrModalOpen || state.identityModalOpen || state.roadmapModalOpen || state.resultsModalTargetId);
+    return Boolean(
+      state.pcComposeModalOpen || state.qrModalOpen || state.identityModalOpen || state.roadmapModalOpen || state.resultsModalTargetId
+    );
   }
 
   function clearAllModals() {
+    state.pcComposeModalOpen = false;
     state.qrModalOpen = false;
     state.identityModalOpen = false;
     state.roadmapModalOpen = false;
@@ -1097,9 +1106,14 @@
   }
 
   function stepBackOneScreen() {
-    if (state.isAnimatingZoomOut) return;
-
     if (state.role === "participant") {
+      if (state.phoneComposeOpen) {
+        state.phoneComposeOpen = false;
+        state.phoneComposeMode = "";
+        state.phonePickedTargetId = "";
+        render();
+        return;
+      }
       if (state.phonePickingIdentity && (state.myMemberUid || state.myGuestName)) {
         state.phonePickingIdentity = false;
         render();
@@ -1125,6 +1139,12 @@
       } else {
         window.location.href = resolveMainPortalUrl();
       }
+      return;
+    }
+
+    if (state.pcComposeModalOpen) {
+      state.pcComposeModalOpen = false;
+      render();
       return;
     }
 
@@ -1204,6 +1224,7 @@
   function goToLobbySlide1(skipHistory) {
     if (!skipHistory) pushNavHistory();
     clearAllModals();
+    state.justEnteredDetail = false;
     state.view = "lobby";
     playChime([523.25, 659.25], 0.09, "sine", 0.04);
     broadcastMasterPointer(false);
@@ -1214,6 +1235,7 @@
     if (!isRemoteSync && !skipHistory) pushNavHistory();
     clearAllModals();
     state.isAnimatingZoomOut = false;
+    state.justEnteredDetail = false;
     state.view = "rating_overview";
     state.detailReturnView = "rating_overview";
     playChime([523.25, 659.25, 783.99], 0.1, "sine", 0.045);
@@ -1225,6 +1247,7 @@
     if (!isRemoteSync && !skipHistory) pushNavHistory();
     clearAllModals();
     state.isAnimatingZoomOut = false;
+    state.justEnteredDetail = false;
     state.view = "team_message_overview";
     state.detailReturnView = "team_message_overview";
     playChime([587.33, 783.99, 987.77], 0.1, "sine", 0.045);
@@ -1257,28 +1280,14 @@
 
     if (isAnyOverview) {
       state.detailReturnView = fromOverviewKind;
-      captureTileOrigin(targetId, sourceEl);
-      const ov = document.querySelector(".tv-overview-stage");
-      if (ov) ov.classList.add("is-zooming-away");
-      playChime([440, 659.25], 0.12, "sine", 0.045);
-
-      setTimeout(() => {
-        state.view = "detail";
-        state.activeTargetId = targetId;
-        if (!isRemoteSync) state.detailTab = nextTab;
-        if (!isRemoteSync) broadcastMasterPointer(false);
-        render();
-      }, 150);
-    } else {
-      setZoomOrigin(window.innerWidth / 2, window.innerHeight / 2);
-      state.view = "detail";
-      state.activeTargetId = targetId;
-      if (!isRemoteSync && forcedTab) state.detailTab = forcedTab;
-      else if (!skipHistory && !isRemoteSync && !forcedTab) state.detailTab = "wordcloud";
-      playChime([523.25, 659.25], 0.09, "sine", 0.04);
-      if (!isRemoteSync) broadcastMasterPointer(false);
-      render();
     }
+    state.view = "detail";
+    state.activeTargetId = targetId;
+    state.justEnteredDetail = !isRemoteSync;
+    if (!isRemoteSync) state.detailTab = nextTab;
+    playChime([440, 659.25], 0.09, "sine", 0.04);
+    if (!isRemoteSync) broadcastMasterPointer(false);
+    render();
   }
 
   function zoomOutToOverview(isRemoteSync, skipHistory, targetOverviewKind) {
@@ -1296,44 +1305,24 @@
         return;
       }
     }
-    if (
-      state.view === "lobby" ||
-      state.view === "overview" ||
-      state.view === "rating_overview" ||
-      state.view === "team_message_overview"
-    ) {
-      if (state.view === destView) return;
-      if (!isRemoteSync && !skipHistory) pushNavHistory();
-      state.view = destView;
-      playChime([440, 587.33], 0.1, "sine", 0.045);
-      if (!isRemoteSync) broadcastMasterPointer(false);
-      render();
-      return;
-    }
-    if (state.isAnimatingZoomOut) return;
-    if (!isRemoteSync && !skipHistory) {
+    if (!isRemoteSync && !skipHistory && state.view !== destView) {
       pushNavHistory();
     }
-    const prevId = state.activeTargetId;
-    captureTileOrigin(prevId, null);
-    state.isAnimatingZoomOut = true;
-
-    const stageEl = document.querySelector(".tv-zoom-stage-outer");
-    if (stageEl) stageEl.classList.add("is-zooming-out");
-    playChime([659.25, 440], 0.12, "sine", 0.045);
-
-    setTimeout(() => {
-      state.isAnimatingZoomOut = false;
-      state.view = destView;
-      state.overviewReturningFromId = prevId;
-      if (!isRemoteSync) broadcastMasterPointer(false);
-      render();
+    const prevId = state.view === "detail" ? state.activeTargetId : "";
+    state.isAnimatingZoomOut = false;
+    state.justEnteredDetail = false;
+    state.view = destView;
+    state.overviewReturningFromId = prevId;
+    playChime([659.25, 440], 0.09, "sine", 0.04);
+    if (!isRemoteSync) broadcastMasterPointer(false);
+    render();
+    if (prevId) {
       setTimeout(() => {
         if (state.overviewReturningFromId === prevId) {
           state.overviewReturningFromId = "";
         }
-      }, 950);
-    }, 260);
+      }, 600);
+    }
   }
 
   /* Presentation Clicker Exact Flow (NO 1-by-1 looping!):
@@ -1622,6 +1611,19 @@
     }
   }
 
+  function computeFacilitatorMainStage(view, targetId, detailReturnView) {
+    if (view === "lobby") return "lobby";
+    if (view === "detail" && targetId === TOPIC_HF_BOARD_ID) return "hf_board";
+    if (view === "detail" && targetId === TOPIC_TRIP_ID) return "trip";
+    if (view === "team_message_overview" || (view === "detail" && detailReturnView === "team_message_overview")) {
+      return "team_message_overview";
+    }
+    if (view === "rating_overview" || (view === "detail" && detailReturnView === "rating_overview")) {
+      return "rating_overview";
+    }
+    return "overview";
+  }
+
   function broadcastMasterPointer(isHeartbeat) {
     if (state.role !== "facilitator") return;
     if (!isHeartbeat) state.pointerSeq += 1;
@@ -1634,6 +1636,8 @@
       view: state.view,
       targetId: state.activeTargetId,
       detailTab: state.detailTab,
+      detailReturnView: state.detailReturnView || "overview",
+      mainStage: computeFacilitatorMainStage(state.view, state.activeTargetId, state.detailReturnView),
       hideWords: state.hideWordsUntilReveal,
       pointerSeq: state.pointerSeq,
       sentMs: Date.now()
@@ -1698,8 +1702,22 @@
 
   function applyMasterPointerToPhone(msg, isInitialBoot) {
     if (!msg || !msg.fromFacilitator) return;
+
+    // Prevent ping-pong if two Facilitator tabs are open at the same time
+    if (!msg.isHeartbeat && msg.senderCli) {
+      state.activeHostCliId = msg.senderCli;
+      state.activeHostTs = Date.now();
+    } else if (
+      msg.isHeartbeat &&
+      state.activeHostCliId &&
+      msg.senderCli &&
+      msg.senderCli !== state.activeHostCliId &&
+      Date.now() - state.activeHostTs < 45000
+    ) {
+      return;
+    }
+
     state.hasSeenFacilitator = true;
-    state.phoneManualOverride = false;
 
     let changed = false;
     if (msg.sessionId && validSessionIds.has(msg.sessionId) && msg.sessionId !== state.sessionId) {
@@ -1716,6 +1734,9 @@
       state.phoneJustSubmittedTargetId = "";
       state.phoneSelfRatedDone = false;
       state.phoneTeamMsgDone = false;
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
+      state.phonePickedTargetId = "";
       saveSessionStore();
       changed = true;
     }
@@ -1734,63 +1755,49 @@
         : "overview";
     const hostTarget = TARGET_MAP.has(normalizedIncomingTarget) ? normalizedIncomingTarget : state.hostTargetId || TOPIC_HF_BOARD_ID;
     const hostTab = msg.detailTab === "team_msg" ? "team_msg" : msg.detailTab === "rating" ? "rating" : "wordcloud";
+    const hostReturn = msg.detailReturnView || "overview";
 
-    if (state.hostView !== hostView || state.hostTargetId !== hostTarget || state.hostDetailTab !== hostTab) {
-      state.hostView = hostView;
-      state.hostTargetId = hostTarget;
-      state.hostDetailTab = hostTab;
-      changed = true;
-    }
+    state.hostView = hostView;
+    state.hostTargetId = hostTarget;
+    state.hostDetailTab = hostTab;
 
-    // Classroom Sync Rules on Student Phone:
-    // - Slide 1 (lobby): Standby check-in
-    // - Slide 2 (Hopes & Fears): Open Hopes & Fears Post-it Pad together
-    // - Slide 3 (overview / member wordcloud): Open 21-Person Picker so students freely pick peers & type!
-    // - Slide 4 (rating_overview / member rating): Open Owner Self-Rating for the student's OWN Word Cloud!
-    // - Slide 5 (team_message_overview / member team_msg): Open "1 เรื่องที่อยากบอกทุกคนในทีม" for the student's OWN profile!
+    // Map ONLY main slide changes — Facilitator zooming into/out of a member card on the projector NEVER jumps or zooms the student's phone!
+    const incomingStage = msg.mainStage || computeFacilitatorMainStage(hostView, hostTarget, hostReturn);
     let nextPhoneView = "overview";
     let nextPhoneTarget = state.activeTargetId;
 
-    if (hostView === "lobby") {
+    if (incomingStage === "lobby") {
       nextPhoneView = "lobby";
-      state.phonePickedTargetId = "";
-    } else if (hostView === "detail" && hostTarget === TOPIC_HF_BOARD_ID) {
+    } else if (incomingStage === "hf_board") {
       nextPhoneView = "detail";
       nextPhoneTarget = TOPIC_HF_BOARD_ID;
-      state.phonePickedTargetId = "";
-    } else if (
-      hostView === "team_message_overview" ||
-      (hostView === "detail" && hostTab === "team_msg" && hostTarget !== TOPIC_TRIP_ID)
-    ) {
-      nextPhoneView = "team_message_overview";
-      state.phonePickedTargetId = "";
-    } else if (hostView === "rating_overview" || (hostView === "detail" && hostTab === "rating" && hostTarget !== TOPIC_TRIP_ID)) {
-      nextPhoneView = "rating_overview";
-      state.phonePickedTargetId = "";
-    } else if (hostView === "detail" && hostTarget === TOPIC_TRIP_ID) {
+    } else if (incomingStage === "trip") {
       nextPhoneView = "detail";
       nextPhoneTarget = TOPIC_TRIP_ID;
-      state.phonePickedTargetId = "";
+    } else if (incomingStage === "team_message_overview") {
+      nextPhoneView = "team_message_overview";
+    } else if (incomingStage === "rating_overview") {
+      nextPhoneView = "rating_overview";
     } else {
       nextPhoneView = "overview";
     }
 
-    if (state.view !== nextPhoneView || state.activeTargetId !== nextPhoneTarget) {
-      const targetChanged = state.activeTargetId !== nextPhoneTarget || state.view !== nextPhoneView;
+    const stageChanged =
+      state.view !== nextPhoneView || (nextPhoneView === "detail" && state.activeTargetId !== nextPhoneTarget);
+
+    if (stageChanged && !state.phoneManualOverride) {
+      // Do not kick a student out of an open typing modal from a background heartbeat
+      if (state.phoneComposeOpen && msg.isHeartbeat) {
+        return;
+      }
       state.view = nextPhoneView;
       state.activeTargetId = nextPhoneTarget;
-      if (targetChanged && !state.phonePickedTargetId) {
-        state.phoneJustSubmittedTargetId = "";
-        syncDefaultPolarityWithTarget(nextPhoneTarget);
-      }
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
+      state.phonePickedTargetId = "";
+      state.phoneJustSubmittedTargetId = "";
+      syncDefaultPolarityWithTarget(nextPhoneTarget);
       changed = true;
-
-      if (!isInitialBoot && !msg.isHeartbeat && state.role === "participant") {
-        try {
-          if (navigator.vibrate) navigator.vibrate(30);
-        } catch (_) {}
-        playChime([523.25, 783.99], 0.08, "sine", 0.035);
-      }
     }
 
     if (changed && !isInitialBoot) {
@@ -1882,31 +1889,6 @@
       if (isRetained && msg.sentMs && Date.now() - msg.sentMs > 6 * 3600 * 1000) return;
       if (state.role === "participant") {
         applyMasterPointerToPhone(msg, false);
-      } else if (state.role === "explorer" && state.followHost) {
-        if (msg.sessionId && validSessionIds.has(msg.sessionId) && msg.sessionId !== state.sessionId) {
-          state.sessionId = msg.sessionId;
-          loadSessionStore(state.sessionId);
-        }
-        const expTarget =
-          msg.targetId === TOPIC_HOPES_ID || msg.targetId === TOPIC_FEARS_ID ? TOPIC_HF_BOARD_ID : msg.targetId;
-        if (msg.view === "detail" && TARGET_MAP.has(expTarget)) {
-          state.detailTab = msg.detailTab || "wordcloud";
-          if (state.view !== "detail" || state.activeTargetId !== expTarget) {
-            zoomIntoTarget(expTarget, null, true, true, state.detailTab);
-          } else {
-            renderPreservingFocus();
-          }
-        } else if (msg.view === "team_message_overview") {
-          goToTeamMessageOverview(true, true);
-        } else if (msg.view === "rating_overview") {
-          goToRatingOverview(true, true);
-        } else if (
-          state.view === "detail" ||
-          state.view === "rating_overview" ||
-          state.view === "team_message_overview"
-        ) {
-          zoomOutToOverview(true, true, "overview");
-        }
       }
       return;
     }
@@ -1955,9 +1937,13 @@
         state.miroCam = { x: 0, y: 0, scale: 1 };
         state.miroAutoFit = true;
         state.miroLastSig = "empty";
+        state.phoneComposeOpen = false;
+        state.phoneComposeMode = "";
+        state.phonePickedTargetId = "";
         state.phoneJustSubmittedTargetId = "";
         state.phoneSelfRatedDone = false;
         state.phoneTeamMsgDone = false;
+        state.pcComposeModalOpen = false;
         saveSessionStore();
         renderPreservingFocus();
       }
@@ -1966,7 +1952,7 @@
 
     if (msg.type === "snapshot") {
       const changed = mergeSnapshot(msg);
-      if (changed) renderPreservingFocus();
+      if (changed) syncLiveDataUi();
       return;
     }
 
@@ -1975,7 +1961,7 @@
         if (msg.newTitle) state.customThemeTitles.set(msg.clusterKey, msg.newTitle);
         else state.customThemeTitles.delete(msg.clusterKey);
         saveSessionStore();
-        renderPreservingFocus();
+        syncLiveDataUi();
       }
       return;
     }
@@ -2007,12 +1993,8 @@
         ) {
           playChime([587.33, 880], 0.09, "sine", 0.04);
         }
-        if (
-          state.role !== "participant" ||
-          state.phoneJustSubmittedTargetId ||
-          (state.view === "rating_overview" && state.myMemberUid === tid)
-        ) {
-          renderPreservingFocus();
+        if (state.role !== "participant" || (state.view === "rating_overview" && state.myMemberUid === tid)) {
+          syncLiveDataUi();
         }
       }
       return;
@@ -2027,7 +2009,7 @@
         if (normWordKey(mp.get(k).text) === norm) mp.delete(k);
       });
       saveSessionStore();
-      renderPreservingFocus();
+      syncLiveDataUi();
       return;
     }
 
@@ -2063,7 +2045,7 @@
         state.teamMessagesByTarget.delete(tid);
       }
       saveSessionStore();
-      renderPreservingFocus();
+      syncLiveDataUi();
       return;
     }
 
@@ -2074,7 +2056,7 @@
       if (!state.ratingsByTarget.has(tid)) state.ratingsByTarget.set(tid, new Map());
       state.ratingsByTarget.get(tid).set(rec.pid, rec);
       saveSessionStore();
-      if (state.role !== "participant") renderPreservingFocus();
+      if (state.role !== "participant") syncLiveDataUi();
       return;
     }
 
@@ -2086,7 +2068,7 @@
       if (!prev || (rec.ts || 0) >= (prev.ts || 0)) {
         state.teamMessagesByTarget.set(tid, rec);
         saveSessionStore();
-        if (state.role !== "participant") renderPreservingFocus();
+        if (state.role !== "participant") syncLiveDataUi();
       }
     }
   }
@@ -2108,7 +2090,7 @@
         } catch (_) {}
       } else if (ev.key === storageKeyForSession(state.sessionId)) {
         loadSessionStore(state.sessionId);
-        renderPreservingFocus();
+        syncLiveDataUi();
       }
     });
 
@@ -2404,7 +2386,7 @@
     saveSessionStore();
     scheduleSnapshotPublish();
     playChime([659.25, 880], 0.09, "sine", 0.05);
-    renderPreservingFocus();
+    syncLiveDataUi();
     return true;
   }
 
@@ -2431,7 +2413,7 @@
     publishPacket(`${state.sessionId}/rating_set`, { type: "rating_set", targetId, record: rec }, false);
     scheduleSnapshotPublish();
     playChime([523.25, 659.25, 783.99], 0.11, "triangle", 0.06);
-    renderPreservingFocus();
+    syncLiveDataUi();
   }
 
   function submitTeamMessage(targetId, rawText) {
@@ -2451,7 +2433,7 @@
     publishPacket(`${state.sessionId}/team_msg_set`, { type: "team_msg_set", targetId, record: rec }, false);
     scheduleSnapshotPublish();
     playChime([587.33, 783.99, 987.77], 0.11, "triangle", 0.06);
-    renderPreservingFocus();
+    syncLiveDataUi();
     return true;
   }
 
@@ -3123,7 +3105,15 @@
                   </div>
                 </div>
                 <div class="tv-tile-words${topPreview ? "" : " is-empty"}">
-                  ${topPreview ? esc(topPreview) : "แตะเพื่อดู Word Cloud ↗"}
+                  ${
+                    topPreview
+                      ? esc(topPreview)
+                      : isTeacherResultOnly()
+                      ? "🔍 แตะเพื่อ Zoom In ดู Word Cloud ↗"
+                      : state.myMemberUid && state.myMemberUid === m.uid
+                      ? "🌟 การ์ดของคุณ (แตะดูผล)"
+                      : "🔍 แตะเพื่อ Zoom In พิมพ์คำสะท้อน ↗"
+                  }
                 </div>
               </button>
             `;
@@ -3390,54 +3380,43 @@
       `;
     }
 
-    // 3. HOPES & FEARS Composer (Student Desktop/Tablet View): Text Input -> Choose Hope (เขียวอ่อน) or Fear (ชมพูอ่อน) -> Submit!
+    // 3. HOPES & FEARS Composer (Student Desktop/Tablet View): Click to Zoom-In Modal to Type -> Close with ✕!
     if (tObj.isHfMode) {
-      const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
-      const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
-      const inputTintStyle =
-        selPol === "fears"
-          ? "background:#fdf2f8;border-color:#f472b6;color:#831843"
-          : "background:#f7fee7;border-color:#84cc16;color:#14532d";
-
+      const myHopes = getMySentWordsForTarget(TOPIC_HOPES_ID);
+      const myFears = getMySentWordsForTarget(TOPIC_FEARS_ID);
+      const myCnt = myHopes.length + myFears.length;
       return `
-        <form class="zm-composer-dock" data-form="send-hf-postit" data-target-id="${targetBucketId}">
-          <div class="zm-composer-row" style="max-width:1160px;flex-wrap:wrap">
-            <input
-              type="text"
-              id="zmWordInput"
-              name="word"
-              class="zm-word-input"
-              style="${inputTintStyle};font-weight:700"
-              autocomplete="off"
-              placeholder=""
-              aria-label="${selPol === "fears" ? "พิมพ์ความกังวล (Fear)" : "พิมพ์ความหวัง (Hope)"}"
-              maxlength="72"
-            />
-            <div class="hf-choice-group" role="group" aria-label="เลือกว่าเป็น Hope หรือ Fear">
-              <button
-                type="button"
-                class="hf-choice-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
-                data-act="set-hf-polarity"
-                data-polarity="hopes"
-              >
-                🌱 Hope (เขียวอ่อน)
-              </button>
-              <button
-                type="button"
-                class="hf-choice-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
-                data-act="set-hf-polarity"
-                data-polarity="fears"
-              >
-                🌸 Fear (ชมพูอ่อน)
-              </button>
-            </div>
-            <button type="submit" class="zm-send-btn">📌 แปะ Post-it</button>
+        <div class="zm-composer-dock">
+          <div class="zm-composer-row" style="justify-content:center;flex-wrap:wrap;gap:10px">
+            <button
+              type="button"
+              class="hf-choice-btn is-hopes is-selected"
+              style="height:44px;padding:0 20px;font-size:15px"
+              data-act="open-pc-hf-compose"
+              data-polarity="hopes"
+            >
+              🌱 กด Zoom In เพื่อพิมพ์ Hope (เขียวอ่อน)
+            </button>
+            <button
+              type="button"
+              class="hf-choice-btn is-fears is-selected"
+              style="height:44px;padding:0 20px;font-size:15px"
+              data-act="open-pc-hf-compose"
+              data-polarity="fears"
+            >
+              🌸 กด Zoom In เพื่อพิมพ์ Fear (ชมพูอ่อน)
+            </button>
+            ${
+              myCnt > 0
+                ? `<span style="font-size:13px;font-weight:800;color:#15803d">✓ คุณส่งแล้ว ${myCnt} แผ่น</span>`
+                : ""
+            }
           </div>
-        </form>
+        </div>
       `;
     }
 
-    // 4. Standard Person / Trip Reflection Composer (Student View)
+    // 4. Standard Person / Trip Reflection Composer (Student View inside Zoomed Card)
     return `
       <form class="zm-composer-dock" data-form="send-word" data-target-id="${esc(tObj.id)}">
         <div class="zm-composer-row">
@@ -3447,19 +3426,207 @@
             name="word"
             class="zm-word-input"
             autocomplete="off"
-            placeholder=""
+            placeholder="พิมพ์คำหรือประโยคสะท้อนตัวตน แล้วกดส่ง..."
             aria-label="พิมพ์คำสะท้อน"
             maxlength="54"
           />
           <button type="submit" class="zm-send-btn">ส่งขึ้นจอ 🚀</button>
-          <span class="hide-mobile" style="font-size:12.5px;font-weight:800;color:#1d4ed8;white-space:nowrap">
-            💬 ${agg.totalSubmissions} คำ (${agg.uniqueRespondents} คน)
-          </span>
+          <button type="button" class="zm-close-x-btn" data-act="close-zoom-card" title="ปิดหน้าซูมกลับตาราง 21 คน">✕ ปิด</button>
         </div>
         <div class="zm-emoji-bar">
           ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="append-emoji" data-emoji="${em}">${em}</button>`).join("")}
         </div>
       </form>
+    `;
+  }
+
+  function renderPcHfComposeModalHtml() {
+    if (!state.pcComposeModalOpen || isTeacherResultOnly()) return "";
+    const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
+    const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+    const mySentWords = getMySentWordsForTarget(TOPIC_HF_BOARD_ID);
+
+    return `
+      <div class="ph-zoom-backdrop" data-act="backdrop-close-pc-hf">
+        <section class="ph-zoom-sheet" role="dialog" aria-modal="true" aria-label="พิมพ์ Post-it Hopes and Fears">
+          <div class="ph-zoom-head">
+            <strong style="font-size:16.5px;color:#0f172a">📌 พิมพ์ Post-it ขึ้นบอร์ด Hopes &amp; Fears</strong>
+            <button type="button" class="zm-close-x-btn" data-act="close-pc-hf-compose" aria-label="ปิดหน้าพิมพ์ Post-it">
+              ✕ <span>ปิด</span>
+            </button>
+          </div>
+
+          <form data-form="pc-modal-send-hf" data-target-id="${targetBucketId}" style="display:flex;flex-direction:column;gap:12px">
+            <div class="ph-hf-selector-grid">
+              <button
+                type="button"
+                class="ph-hf-card-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
+                data-act="set-hf-polarity"
+                data-polarity="hopes"
+              >
+                🌱 Hope (เขียวอ่อน)
+              </button>
+              <button
+                type="button"
+                class="ph-hf-card-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
+                data-act="set-hf-polarity"
+                data-polarity="fears"
+              >
+                🌸 Fear (ชมพูอ่อน)
+              </button>
+            </div>
+
+            <div class="ph-postit-pad ${selPol === "fears" ? "is-fears" : "is-hopes"}">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear" : "Hope"}</span>
+                <span style="font-size:12px;font-weight:800;opacity:0.85">${selPol === "fears" ? "🌸 Post-it ชมพูอ่อน" : "🌱 Post-it เขียวอ่อน"}</span>
+              </div>
+              <textarea
+                id="pcHfModalInput"
+                name="hfText"
+                class="ph-postit-textarea"
+                maxlength="72"
+                placeholder="พิมพ์ข้อความของคุณที่นี่..."
+              ></textarea>
+            </div>
+
+            <button type="submit" class="ph-submit-btn">
+              📌 แปะ Post-it ${selPol === "fears" ? "สีชมพูอ่อน (Fear)" : "สีเขียวอ่อน (Hope)"} ขึ้นบอร์ด!
+            </button>
+          </form>
+
+          ${
+            mySentWords.length
+              ? `
+                <div style="border-top:1px dashed #e2e8f0;padding-top:10px">
+                  <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">Post-it ที่คุณแปะแล้ว (${mySentWords.length}):</div>
+                  <div class="ph-sent-chips" style="justify-content:flex-start">
+                    ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                  </div>
+                </div>
+              `
+              : ""
+          }
+        </section>
+      </div>
+    `;
+  }
+
+  function renderDetailDynamicVisualHtml(tObj, agg) {
+    const m = tObj.member;
+    const isHfBoard = Boolean(tObj.isHfMode);
+    if (isHfBoard) {
+      return renderThematicAffinityBodyHtml(tObj);
+    }
+    const positioned = computeAdaptiveWordCloud(agg.items, false);
+    const rInfo = m ? getMemberSelfRatingInfo(m.uid) : { hasScore: false, score: 0, scorePct: 0, reason: "" };
+    const tmInfo = m ? getMemberTeamMessageInfo(m.uid) : { hasText: false, text: "" };
+    const displayScore = rInfo.score;
+    const scorePct = rInfo.scorePct;
+
+    if (state.detailTab === "team_msg" && m) {
+      return `
+        <div class="tm-stage-card">
+          <div style="display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap">
+            <span style="padding:5px 14px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;font-size:13.5px;font-weight:800">
+              🤝 ข้อความจาก '${esc(m.mentiName)}' ถึงสมาชิกทุกคนในทีม
+            </span>
+          </div>
+          ${
+            tmInfo.hasText
+              ? `<blockquote class="tm-stage-quote">“${esc(tmInfo.text)}”</blockquote>`
+              : `<p style="margin:0;font-size:18px;color:#94a3b8;font-weight:600">รอ '${esc(m.nickname)}' พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทั้งกลุ่ม...</p>`
+          }
+        </div>
+      `;
+    }
+
+    if (state.detailTab === "rating" && m) {
+      return `
+        <div class="zm-rating-wrap">
+          <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;justify-content:space-between">
+            <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+              <strong style="font-size:14px;color:#475569">☁️ คำสะท้อนจากเพื่อนๆ (${agg.totalSubmissions} คำ):</strong>
+              ${
+                agg.items.length
+                  ? agg.items
+                      .slice(0, 16)
+                      .map(
+                        (w, i) =>
+                          `<span style="padding:4px 11px;border-radius:999px;background:#eff6ff;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[i % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
+                      )
+                      .join("")
+                  : `<span style="color:#94a3b8;font-size:13.5px">ยังไม่มีคำสะท้อนใน Word Cloud</span>`
+              }
+            </div>
+          </div>
+
+          <div class="menti-scale-stage">
+            <div class="menti-scale-row-label">คะแนน</div>
+            <div class="menti-scale-visual">
+              ${rInfo.hasScore ? buildMentimeterCurveSvg(displayScore, "menti-curve-svg") : ""}
+              <div class="menti-bar-track">
+                <div class="menti-bar-fill" style="width:${rInfo.hasScore ? scorePct : 0}%"></div>
+                ${
+                  rInfo.hasScore
+                    ? `<div class="menti-score-badge" style="left:${scorePct}%">${displayScore.toFixed(1)}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+            <div class="menti-axis-labels">
+              <span class="menti-axis-left">Strongly disagree</span>
+              <span class="menti-axis-right">Strongly agree</span>
+            </div>
+          </div>
+
+          ${
+            rInfo.reason
+              ? `
+                <div class="menti-reason-card">
+                  💬 <strong>เหตุผลของ '${esc(m.nickname)}':</strong> "${esc(rInfo.reason)}"
+                </div>
+              `
+              : !rInfo.hasScore
+              ? `<div style="text-align:center;color:#94a3b8;font-size:14.5px;font-weight:600">รอ '${esc(m.nickname)}' ให้คะแนนและเหตุผล...</div>`
+              : ""
+          }
+        </div>
+      `;
+    }
+
+    return `
+      <div class="zm-cloud-body">
+        ${
+          state.hideWordsUntilReveal
+            ? `
+              <div class="zm-empty-prompt">
+                <strong>🙈 ซ่อนคำสะท้อนไว้รอเฉลยพร้อมกัน (${agg.totalSubmissions} คำ · จาก ${agg.uniqueRespondents} คน)</strong>
+                <p>เมื่อทุกคนส่งคำครบแล้ว กดปุ่มด้านล่างเพื่อเปิดเฉลย Word Cloud บนจอใหญ่พร้อมกัน!</p>
+                <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">✨ เปิดเฉลย Word Cloud พร้อมกัน!</button>
+              </div>
+            `
+            : positioned.length
+            ? `
+              <div class="zm-cloud-canvas">
+                ${positioned
+                  .map(
+                    (w, idx) => `
+                      <span
+                        class="menti-word-item"
+                        style="left:${w.leftPct}%;top:${w.topPct}%;font-size:${w.fontPx}px;color:${w.color};z-index:${50 - idx}"
+                        title="${esc(w.text)} (${w.count} ครั้ง)"
+                        data-act="open-results"
+                        data-target-id="${esc(tObj.id)}"
+                      >${esc(w.text)}${w.count > 1 ? `<sup class="menti-word-sup">×${w.count}</sup>` : ""}</span>
+                    `
+                  )
+                  .join("")}
+              </div>
+            `
+            : `<div class="zm-cloud-canvas"></div>`
+        }
+      </div>
     `;
   }
 
@@ -3469,12 +3636,10 @@
     const m = tObj.member;
     const isHfBoard = Boolean(tObj.isHfMode);
     const agg = getAggregatedWords(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id);
-    const positioned = !isHfBoard ? computeAdaptiveWordCloud(agg.items, false) : [];
 
     const rInfo = m ? getMemberSelfRatingInfo(m.uid) : { hasScore: false, score: 0, scorePct: 0, reason: "" };
     const tmInfo = m ? getMemberTeamMessageInfo(m.uid) : { hasText: false, text: "" };
     const displayScore = rInfo.score;
-    const scorePct = rInfo.scorePct;
     const isRatingTab = Boolean(m && state.detailTab === "rating");
     const isTeamMsgTab = Boolean(m && state.detailTab === "team_msg");
 
@@ -3498,8 +3663,39 @@
       ? "ดูคะแนนสะท้อนตัวตน ▶"
       : "กลับหน้า 21 คน ▶";
 
+    const enterCls = state.justEnteredDetail ? " is-manual-enter" : "";
+    state.justEnteredDetail = false;
+
+    const ownerExtraComposerHtml =
+      !isHfBoard && state.detailTab === "team_msg" && m && !isTeacherResultOnly() && state.myMemberUid === m.uid
+        ? `
+          <form class="zm-composer-dock" data-form="phone-send-team-msg" data-target-id="${esc(m.uid)}">
+            <div class="zm-composer-row">
+              <input type="text" id="phTeamMsgInput" name="teamMsg" class="zm-word-input" maxlength="220" placeholder="พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทุกคนในทีม..." aria-label="1 เรื่องที่อยากบอกทุกคนในทีม" value="${esc(tmInfo.text)}" />
+              <button type="submit" class="zm-send-btn">บันทึกข้อความ</button>
+              <button type="button" class="zm-close-x-btn" data-act="close-zoom-card">✕ ปิด</button>
+            </div>
+          </form>
+        `
+        : !isHfBoard && state.detailTab === "rating" && m && !isTeacherResultOnly() && state.myMemberUid === m.uid
+        ? `
+          <form class="zm-composer-dock" data-form="phone-send-rating" data-target-id="${esc(m.uid)}">
+            <div class="zm-composer-row" style="flex-wrap:wrap">
+              <strong style="font-size:14px;color:#1e3a8a">⭐ คะแนนของคุณ (1–5):</strong>
+              <input type="range" id="phRatingSlider" name="score" min="1" max="5" step="0.5" value="${rInfo.hasScore ? displayScore : state.phoneDraftRating}" style="width:150px;accent-color:#196cff" />
+              <span id="phRatingReadout" style="font-size:16px;font-weight:900;color:#196cff">${(rInfo.hasScore ? displayScore : state.phoneDraftRating).toFixed(1)} <span style="font-size:12px;color:#64748b">/ 5.0</span></span>
+              <input type="text" id="phReasonInput" name="reason" class="zm-word-input" maxlength="140" placeholder="พิมพ์เหตุผลที่ให้คะแนน..." aria-label="เหตุผลที่ให้คะแนน" value="${esc(rInfo.reason)}" />
+              <button type="submit" class="zm-send-btn">บันทึกคะแนน</button>
+              <button type="button" class="zm-close-x-btn" data-act="close-zoom-card">✕ ปิด</button>
+            </div>
+          </form>
+        `
+        : isHfBoard || (!isRatingTab && !isTeamMsgTab)
+        ? renderStageBottomComposerHtml(tObj, agg)
+        : "";
+
     return `
-      <main class="tv-zoom-stage-outer">
+      <main class="tv-zoom-stage-outer${enterCls}">
         <section class="menti-zoom-card" aria-live="polite">
           <div class="menti-decor" aria-hidden="true">
             <div class="menti-shape-blue-para"></div>
@@ -3527,7 +3723,7 @@
                   `
                   : `
                     <button type="button" class="tv-pill-btn ${state.detailTab === "wordcloud" ? "is-active" : ""}" data-act="set-detail-tab" data-tab="wordcloud">
-                      ☁️ Word Cloud (${agg.totalSubmissions})
+                      ☁️ Word Cloud (<span id="zmTabWordCount">${agg.totalSubmissions}</span>)
                     </button>
                     ${
                       m
@@ -3539,7 +3735,7 @@
                     }
                   `
               }
-              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}">📊 รายการคำ (${agg.totalSubmissions})</button>
+              <button type="button" class="tv-pill-btn" data-act="open-results" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}">📊 รายการคำ (<span id="zmLiveCountBadge">${agg.totalSubmissions}</span>)</button>
               ${
                 isTeacherResultOnly()
                   ? `<button type="button" class="tv-pill-btn" style="border-color:#fecaca;background:#fff1f2;color:#be123c" data-act="clear-target" data-target-id="${esc(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id)}" title="ล้างข้อมูลและแคชของสไลด์นี้ทันที">🗑️ ล้างแคชหน้านี้</button>`
@@ -3551,6 +3747,9 @@
               <button type="button" class="tv-pill-btn" data-act="toggle-hide-words">${state.hideWordsUntilReveal ? "👁️ เปิดเฉลยพร้อมกัน!" : "🙈 ซ่อนรอเฉลย"}</button>
               <button type="button" class="tv-pill-btn" data-act="clicker-prev" title="สไลด์ก่อนหน้า (PageUp / ←)">◀ ก่อนหน้า</button>
               <button type="button" class="tv-pill-btn is-primary" data-act="clicker-next" title="สไลด์ถัดไป (PageDown / →)">${nextBtnLabel}</button>
+              <button type="button" class="zm-close-x-btn" data-act="close-zoom-card" title="ปิดหน้าซูม / กดกากบาทออก (Esc)" aria-label="ปิดหน้าซูม">
+                ✕ <span>ปิด</span>
+              </button>
             </div>
           </div>
 
@@ -3596,145 +3795,223 @@
             <h1 class="zm-big-question" ${isHfBoard ? 'style="font-size:clamp(18px,1.85vw,28px)"' : ""}>${bigQuestionHtml}</h1>
           </div>
 
-          ${
-            tObj.isHfMode
-              ? renderThematicAffinityBodyHtml(tObj) + renderStageBottomComposerHtml(tObj, agg)
-              : state.detailTab === "team_msg" && m
-              ? `
-                <div class="tm-stage-card">
-                  <div style="display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap">
-                    <span style="padding:5px 14px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;font-size:13.5px;font-weight:800">
-                      🤝 ข้อความจาก '${esc(m.mentiName)}' ถึงสมาชิกทุกคนในทีม
-                    </span>
-                    <button type="button" class="tv-pill-btn" data-act="go-team-msg-overview">⊞ กลับหน้า 1 เรื่องบอกทีม (21 คน)</button>
-                  </div>
+          <div id="zmLiveDynamicBody" style="flex:1;min-height:0;display:flex;flex-direction:column">
+            ${renderDetailDynamicVisualHtml(tObj, agg)}
+          </div>
 
-                  ${
-                    tmInfo.hasText
-                      ? `<blockquote class="tm-stage-quote">“${esc(tmInfo.text)}”</blockquote>`
-                      : `<p style="margin:0;font-size:18px;color:#94a3b8;font-weight:600">รอ '${esc(m.nickname)}' พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทั้งกลุ่มจากมือถือ...</p>`
-                  }
-
-                  ${
-                    !isTeacherResultOnly() && state.myMemberUid === m.uid
-                      ? `
-                        <form data-form="phone-send-team-msg" data-target-id="${esc(m.uid)}" style="display:flex;gap:10px;width:100%;max-width:760px;align-items:center;flex-wrap:wrap;margin-top:8px">
-                          <input type="text" name="teamMsg" class="zm-word-input" maxlength="220" placeholder="" aria-label="1 เรื่องที่อยากบอกทุกคนในทีม" value="${esc(tmInfo.text)}" />
-                          <button type="submit" class="zm-send-btn">บันทึกข้อความ</button>
-                        </form>
-                      `
-                      : ""
-                  }
-                </div>
-              `
-              : state.detailTab === "rating" && m
-              ? `
-                <div class="zm-rating-wrap">
-                  <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;justify-content:space-between">
-                    <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-                      <strong style="font-size:14px;color:#475569">☁️ คำสะท้อนจากเพื่อนๆ (${agg.totalSubmissions} คำ):</strong>
-                      ${
-                        agg.items.length
-                          ? agg.items
-                              .slice(0, 16)
-                              .map(
-                                (w, i) =>
-                                  `<span style="padding:4px 11px;border-radius:999px;background:#eff6ff;font-weight:700;font-size:13.5px;color:${MENTI_COLORS[i % MENTI_COLORS.length]}">${esc(w.text)}${w.count > 1 ? ` ×${w.count}` : ""}</span>`
-                              )
-                              .join("")
-                          : `<span style="color:#94a3b8;font-size:13.5px">ยังไม่มีคำสะท้อนใน Word Cloud</span>`
-                      }
-                    </div>
-                    <button type="button" class="tv-pill-btn" data-act="go-rating-overview">⭐ กลับหน้าคะแนนทั้ง 21 คน</button>
-                  </div>
-
-                  <div class="menti-scale-stage">
-                    <div class="menti-scale-row-label">คะแนน</div>
-                    <div class="menti-scale-visual">
-                      ${rInfo.hasScore ? buildMentimeterCurveSvg(displayScore, "menti-curve-svg") : ""}
-                      <div class="menti-bar-track">
-                        <div class="menti-bar-fill" style="width:${rInfo.hasScore ? scorePct : 0}%"></div>
-                        ${
-                          rInfo.hasScore
-                            ? `<div class="menti-score-badge" style="left:${scorePct}%">${displayScore.toFixed(1)}</div>`
-                            : ""
-                        }
-                      </div>
-                    </div>
-                    <div class="menti-axis-labels">
-                      <span class="menti-axis-left">Strongly disagree</span>
-                      <span class="menti-axis-right">Strongly agree</span>
-                    </div>
-                  </div>
-
-                  ${
-                    rInfo.reason
-                      ? `
-                        <div class="menti-reason-card">
-                          💬 <strong>เหตุผลของ '${esc(m.nickname)}':</strong> "${esc(rInfo.reason)}"
-                        </div>
-                      `
-                      : !rInfo.hasScore
-                      ? `<div style="text-align:center;color:#94a3b8;font-size:14.5px;font-weight:600">รอ '${esc(m.nickname)}' ให้คะแนนและเหตุผลจากมือถือ...</div>`
-                      : ""
-                  }
-
-                  ${
-                    !isTeacherResultOnly() && state.myMemberUid === m.uid
-                      ? `
-                        <form data-form="phone-send-rating" data-target-id="${esc(m.uid)}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:12px 16px;border-radius:18px;border:1px solid #cbd5e1">
-                          <strong style="font-size:14px;color:#1e3a8a">⭐ ให้คะแนนของคุณ (1–5):</strong>
-                          <input type="range" name="score" min="1" max="5" step="0.5" value="${rInfo.hasScore ? displayScore : 5}" style="width:160px;accent-color:#196cff" />
-                          <input type="text" name="reason" class="zm-word-input" style="height:38px" maxlength="140" placeholder="" aria-label="เหตุผลที่ให้คะแนน" value="${esc(rInfo.reason)}" />
-                          <button type="submit" class="zm-send-btn" style="height:38px">บันทึกคะแนน</button>
-                        </form>
-                      `
-                      : ""
-                  }
-                </div>
-              `
-              : `
-                <div class="zm-cloud-body">
-                  ${
-                    state.hideWordsUntilReveal
-                      ? `
-                        <div class="zm-empty-prompt">
-                          <strong>🙈 ซ่อนคำสะท้อนไว้รอเฉลยพร้อมกัน (${agg.totalSubmissions} คำ · จาก ${agg.uniqueRespondents} คน)</strong>
-                          <p>เมื่อทุกคนส่งคำครบแล้ว กดปุ่มด้านล่างเพื่อเปิดเฉลย Word Cloud บนจอใหญ่พร้อมกัน!</p>
-                          <button type="button" class="tv-pill-btn is-primary" style="height:44px;padding:0 22px;font-size:15.5px" data-act="toggle-hide-words">✨ เปิดเฉลย Word Cloud พร้อมกัน!</button>
-                        </div>
-                      `
-                      : positioned.length
-                      ? `
-                        <div class="zm-cloud-canvas">
-                          ${positioned
-                            .map(
-                              (w, idx) => `
-                                <span
-                                  class="menti-word-item"
-                                  style="left:${w.leftPct}%;top:${w.topPct}%;font-size:${w.fontPx}px;color:${w.color};z-index:${50 - idx}"
-                                  title="${esc(w.text)} (${w.count} ครั้ง)"
-                                  data-act="open-results"
-                                  data-target-id="${esc(tObj.id)}"
-                                >${esc(w.text)}${w.count > 1 ? `<sup class="menti-word-sup">×${w.count}</sup>` : ""}</span>
-                              `
-                            )
-                            .join("")}
-                        </div>
-                      `
-                      : `<div class="zm-cloud-canvas"></div>`
-                  }
-                </div>
-
-                ${renderStageBottomComposerHtml(tObj, agg)}
-              `
-          }
+          ${ownerExtraComposerHtml}
         </section>
       </main>
+      ${renderPcHfComposeModalHtml()}
     `;
   }
 
-  /* --- Student Phone Controller (join.html / #join) --- */
+  /* --- Student Phone Controller (join.html / #join) — Calm Base View + Manual Zoom-In Sheet with Top-Right ✕ --- */
+  function renderPhoneZoomComposeSheetHtml(myMem) {
+    if (!state.phoneComposeOpen) return "";
+    const mode = state.phoneComposeMode || "peer";
+
+    if (mode === "hf") {
+      const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
+      const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      return `
+        <div class="ph-zoom-backdrop" data-act="backdrop-close-phone-compose">
+          <section class="ph-zoom-sheet" role="dialog" aria-modal="true" aria-label="พิมพ์ Post-it Hopes and Fears">
+            <div class="ph-zoom-head">
+              <strong style="font-size:16px;color:#0f172a">📌 พิมพ์ Post-it (Hopes &amp; Fears)</strong>
+              <button type="button" class="zm-close-x-btn" data-act="phone-close-compose" aria-label="ปิดหน้าพิมพ์">✕ <span>ปิด</span></button>
+            </div>
+
+            <form data-form="phone-send-hf" data-slide-id="${TOPIC_HF_BOARD_ID}" data-target-id="${targetBucketId}" style="display:flex;flex-direction:column;gap:12px">
+              <div class="ph-hf-selector-grid">
+                <button
+                  type="button"
+                  class="ph-hf-card-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
+                  data-act="set-hf-polarity"
+                  data-polarity="hopes"
+                >
+                  🌱 Hope (เขียวอ่อน)
+                </button>
+                <button
+                  type="button"
+                  class="ph-hf-card-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
+                  data-act="set-hf-polarity"
+                  data-polarity="fears"
+                >
+                  🌸 Fear (ชมพูอ่อน)
+                </button>
+              </div>
+
+              <div class="ph-postit-pad ${selPol === "fears" ? "is-fears" : "is-hopes"}">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear" : "Hope"}</span>
+                  <span style="font-size:11.5px;font-weight:800;opacity:0.85">${selPol === "fears" ? "🌸 Post-it ชมพูอ่อน" : "🌱 Post-it เขียวอ่อน"}</span>
+                </div>
+                <textarea
+                  id="phHfInput"
+                  name="hfText"
+                  class="ph-postit-textarea"
+                  maxlength="72"
+                  placeholder="พิมพ์ข้อความของคุณที่นี่..."
+                ></textarea>
+              </div>
+
+              <button type="submit" class="ph-submit-btn">
+                📌 แปะ Post-it ${selPol === "fears" ? "สีชมพูอ่อน (Fear)" : "สีเขียวอ่อน (Hope)"} ขึ้นจอใหญ่!
+              </button>
+            </form>
+          </section>
+        </div>
+      `;
+    }
+
+    if (mode === "rating" && myMem) {
+      const myRInfo = getMemberSelfRatingInfo(myMem.uid);
+      const currentVal = myRInfo.hasScore ? myRInfo.score : state.phoneDraftRating;
+      return `
+        <div class="ph-zoom-backdrop" data-act="backdrop-close-phone-compose">
+          <section class="ph-zoom-sheet" role="dialog" aria-modal="true" aria-label="ให้คะแนน Word Cloud ของคุณ">
+            <div class="ph-zoom-head">
+              <strong style="font-size:16px;color:#0f172a">⭐ ให้คะแนน &amp; เหตุผลของ '${esc(myMem.nickname)}'</strong>
+              <button type="button" class="zm-close-x-btn" data-act="phone-close-compose" aria-label="ปิดหน้าให้คะแนน">✕ <span>ปิด</span></button>
+            </div>
+
+            <form data-form="phone-send-rating" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
+              <div style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:18px;padding:14px 16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                  <span style="font-size:13.5px;font-weight:800;color:#334155">คะแนนความตรงกับตัวตน</span>
+                  <span id="phRatingReadout" style="font-size:26px;font-weight:900;color:#196cff">${currentVal.toFixed(1)} <span style="font-size:14px;color:#64748b">/ 5.0</span></span>
+                </div>
+                <input
+                  type="range"
+                  id="phRatingSlider"
+                  name="score"
+                  min="1"
+                  max="5"
+                  step="0.5"
+                  value="${currentVal}"
+                  style="width:100%;margin:8px 0 6px;accent-color:#196cff;height:28px;cursor:pointer"
+                />
+                <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b">
+                  <span>1.0 · Strongly disagree</span>
+                  <span>5.0 · Strongly agree</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="ph-input-label"><span>ทำไมถึงให้คะแนนเช่นนั้น?</span></div>
+                <textarea
+                  id="phReasonInput"
+                  name="reason"
+                  class="ph-postit-textarea"
+                  style="min-height:86px;background:#f8fafc;border-color:#cbd5e1"
+                  maxlength="140"
+                  placeholder="พิมพ์เหตุผลสั้นๆ ที่นี่..."
+                >${esc(myRInfo.reason || "")}</textarea>
+              </div>
+
+              <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#196cff,#2563eb)">
+                ⭐ ส่งคะแนนและเหตุผลขึ้นจอใหญ่!
+              </button>
+            </form>
+          </section>
+        </div>
+      `;
+    }
+
+    if (mode === "team_msg" && myMem) {
+      const myTmInfo = getMemberTeamMessageInfo(myMem.uid);
+      return `
+        <div class="ph-zoom-backdrop" data-act="backdrop-close-phone-compose">
+          <section class="ph-zoom-sheet" role="dialog" aria-modal="true" aria-label="พิมพ์ 1 เรื่องที่อยากบอกทุกคนในทีม">
+            <div class="ph-zoom-head">
+              <strong style="font-size:16px;color:#0f172a">🤝 1 เรื่องที่ '${esc(myMem.nickname)}' อยากบอกทีม</strong>
+              <button type="button" class="zm-close-x-btn" data-act="phone-close-compose" aria-label="ปิดหน้าพิมพ์">✕ <span>ปิด</span></button>
+            </div>
+
+            <form data-form="phone-send-team-msg" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
+              <textarea
+                id="phTeamMsgInput"
+                name="teamMsg"
+                class="ph-postit-textarea"
+                style="min-height:112px;background:#f8fafc;border-color:#c7d2fe"
+                maxlength="220"
+                placeholder="พิมพ์ 1 เรื่องที่อยากบอกเพื่อนทุกคนในทีม..."
+              >${esc(myTmInfo.text || "")}</textarea>
+
+              <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#4f46e5,#2563eb)">
+                🤝 ส่งข้อความขึ้นจอใหญ่!
+              </button>
+            </form>
+          </section>
+        </div>
+      `;
+    }
+
+    // Peer / Trip Word Cloud Zoom-In Typing Sheet
+    const tid = state.phonePickedTargetId || TOPIC_TRIP_ID;
+    const tObj = TARGET_MAP.get(tid) || TARGET_MAP.get(TOPIC_TRIP_ID);
+    const m = tObj ? tObj.member : null;
+    const mySentWords = getMySentWordsForTarget(tObj.id);
+
+    return `
+      <div class="ph-zoom-backdrop" data-act="backdrop-close-phone-compose">
+        <section class="ph-zoom-sheet" role="dialog" aria-modal="true" aria-label="พิมพ์คำสะท้อน">
+          <div class="ph-zoom-head">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              ${
+                m
+                  ? `<img src="${esc(m.photo)}" alt="${esc(m.nickname)}" style="width:40px;height:40px;border-radius:12px;object-fit:cover;object-position:center 16%;flex-shrink:0" />`
+                  : `<span style="font-size:24px">🚂</span>`
+              }
+              <div style="min-width:0">
+                <strong style="display:block;font-size:16.5px;color:#0f172a;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tObj.shortTitle)}</strong>
+                <span style="font-size:12px;color:#64748b">${esc(m ? m.fullName : "ความคาดหวังทริปกุฉินารายณ์")}</span>
+              </div>
+            </div>
+            <button type="button" class="zm-close-x-btn" data-act="phone-close-compose" aria-label="ปิดหน้าพิมพ์">✕ <span>ปิด</span></button>
+          </div>
+
+          <form data-form="phone-send-words" data-target-id="${esc(tObj.id)}" style="display:flex;flex-direction:column;gap:12px">
+            <div class="ph-inputs-stack">
+              <div>
+                <div class="ph-input-label"><span>คำหรือประโยคที่ 1 *</span><span>สูงสุด 54 ตัวอักษร</span></div>
+                <input type="text" id="phW1" name="w1" class="ph-answer-input" autocomplete="off" placeholder="พิมพ์คำหรือประโยคที่ 1..." maxlength="54" />
+              </div>
+              <div>
+                <div class="ph-input-label"><span>คำหรือประโยคที่ 2 (ถ้ามี)</span></div>
+                <input type="text" id="phW2" name="w2" class="ph-answer-input" autocomplete="off" placeholder="คำหรือประโยคที่ 2..." maxlength="54" />
+              </div>
+              <div>
+                <div class="ph-input-label"><span>คำหรือประโยคที่ 3 (ถ้ามี)</span></div>
+                <input type="text" id="phW3" name="w3" class="ph-answer-input" autocomplete="off" placeholder="คำหรือประโยคที่ 3..." maxlength="54" />
+              </div>
+            </div>
+
+            <div class="zm-emoji-bar">
+              ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="phone-emoji" data-emoji="${em}">${em}</button>`).join("")}
+            </div>
+
+            <button type="submit" class="ph-submit-btn">🚀 ส่งคำตอบขึ้นจอใหญ่!</button>
+          </form>
+
+          ${
+            mySentWords.length
+              ? `
+                <div style="border-top:1px dashed #e2e8f0;padding-top:10px">
+                  <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:6px">✓ คำที่คุณส่งให้แล้ว (${mySentWords.length}):</div>
+                  <div class="ph-sent-chips" style="justify-content:flex-start">
+                    ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                  </div>
+                </div>
+              `
+              : ""
+          }
+        </section>
+      </div>
+    `;
+  }
+
   function renderParticipantPhoneHtml() {
     const myMem = MEMBER_MAP.get(state.myMemberUid);
     const hasIdentity = Boolean(myMem || state.myGuestName);
@@ -3777,11 +4054,11 @@
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
                 <div>
                   <h1 style="margin:0 0 4px;font-size:21px;font-weight:800;color:#0f172a">ยืนยันตัวตนเข้าห้อง Kuchi Gang 2569 👋</h1>
-                  <p style="margin:0;font-size:13.5px;color:#64748b">กรอกรหัส นศพ. 3 ตัวท้าย เพื่อซิงค์ตามจอใหญ่และปิดช่องพิมพ์อัตโนมัติเมื่อถึงสไลด์ของตัวเอง</p>
+                  <p style="margin:0;font-size:13.5px;color:#64748b">กรอกรหัส นศพ. 3 ตัวท้าย เพื่อเข้าห้องและเลือกกด Zoom In พิมพ์คำตอบได้อย่างเสถียร</p>
                 </div>
                 ${
                   hasIdentity
-                    ? `<button type="button" class="tv-pill-btn" data-act="phone-cancel-pick">✕ ปิด</button>`
+                    ? `<button type="button" class="zm-close-x-btn" data-act="phone-cancel-pick">✕ <span>ปิด</span></button>`
                     : ""
                 }
               </div>
@@ -3793,8 +4070,10 @@
       );
     }
 
-    // Step 2A: Standby View ONLY when Facilitator is still on Slide 1 (QR Lobby)
-    if (state.view === "lobby" && !state.phoneManualOverride && !state.phonePickedTargetId) {
+    const zoomSheetHtml = renderPhoneZoomComposeSheetHtml(myMem);
+
+    // Step 2A: Standby View when Facilitator is on Slide 1 (QR Lobby)
+    if (state.view === "lobby" && !state.phoneManualOverride) {
       return (
         topBar +
         `
@@ -3817,84 +4096,93 @@
                   📱 จอใหญ่กำลังอยู่ที่ Slide 1 รอเพื่อนสแกน QR เข้าห้องครบทุกคน
                 </div>
                 <p style="margin:2px 0 0;font-size:14.5px;color:#475569;line-height:1.5;max-width:440px">
-                  👀 ทันทีที่อาจารย์กดไปสไลด์ถัดไป หน้าจอมือถือนี้จะเปิดกระดาษ Post-it / หน้าเลือกคนพิมพ์ให้อัตโนมัติ!
+                  👀 เมื่ออาจารย์กดเริ่มสไลด์ถัดไป สามารถแตะปุ่มเพื่อเปิดหน้าพิมพ์คำตอบได้ทันที (ไม่มีซูมเข้า-ออกอัตโนมัติ)
                 </p>
               </div>
 
               <div style="border-top:1px dashed #e2e8f0;padding-top:12px;text-align:center">
                 <button type="button" class="tv-pill-btn" data-act="phone-enable-manual">
-                  เข้าหน้าเลือกหัวข้อ / เลือกคนพิมพ์ทันที →
+                  เข้าหน้าเลือกหัวข้อ / เลือกคนพิมพ์ล่วงหน้า →
                 </button>
               </div>
             </section>
           </main>
-        `
+        ` +
+        zoomSheetHtml
       );
     }
 
-    // Step 2B-TeamMsg: When Facilitator moves to Slide 5 (team_message_overview), Student Phone opens THEIR OWN "1 เรื่องที่อยากบอกทุกคนในทีม"!
-    if (state.view === "team_message_overview" && !state.phonePickedTargetId && myMem) {
-      const myTmInfo = getMemberTeamMessageInfo(myMem.uid);
-
+    // Step 2B-HF: Slide 2 (Hopes & Fears) Calm Base Screen -> Tap Button to Zoom In to Type!
+    if (state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID) {
+      const mySentWords = getMySentWordsForTarget(TOPIC_HF_BOARD_ID);
       return (
         topBar +
         `
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>🤝 1 เรื่องที่อยากบอกทุกคนในทีม</span>
+                <span>📌 Slide 2 · Hopes &amp; Fears</span>
+                ${
+                  state.phoneManualOverride
+                    ? `<button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-open-peer-grid-temp">⊞ ตาราง 21 คน</button>`
+                    : ""
+                }
               </div>
 
-              <div class="ph-person-banner">
-                <img src="${esc(myMem.photo)}" alt="${esc(myMem.nickname)}" />
-                <div style="min-width:0">
-                  <div style="font-size:12px;font-weight:800;color:#4f46e5">🌟 ข้อความจาก '${esc(myMem.mentiName)}'</div>
-                  <div style="font-size:13px;color:#475569">${esc(myMem.fullName)}</div>
-                </div>
-              </div>
-
-              <h1 class="ph-big-question" style="font-size:18px">
-                1 เรื่องที่ <span class="zm-highlight-name">'${esc(myMem.mentiName)}'</span> อยากบอกกับทุกคน เพื่อจะได้ทำงานร่วมกันอย่างราบรื่น เข้าใจกัน และสร้างบรรยากาศที่ดีในทีม?
+              <h1 class="ph-big-question">
+                <span class="zm-highlight-name">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?
               </h1>
 
+              <p style="margin:0;font-size:13.5px;color:#475569">
+                แตะปุ่มด้านล่างเพื่อ <strong>Zoom In พิมพ์ Post-it</strong> (และกดปุ่ม <strong>✕ ปิด</strong> มุมขวาบนเมื่อต้องการออก)
+              </p>
+
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <button
+                  type="button"
+                  class="ph-hf-card-btn is-hopes is-selected"
+                  style="height:56px;font-size:16px"
+                  data-act="phone-open-compose"
+                  data-compose-mode="hf"
+                  data-polarity="hopes"
+                >
+                  🔍 กดพิมพ์ 🌱 Hope (Post-it เขียวอ่อน)
+                </button>
+                <button
+                  type="button"
+                  class="ph-hf-card-btn is-fears is-selected"
+                  style="height:56px;font-size:16px"
+                  data-act="phone-open-compose"
+                  data-compose-mode="hf"
+                  data-polarity="fears"
+                >
+                  🔍 กดพิมพ์ 🌸 Fear (Post-it ชมพูอ่อน)
+                </button>
+              </div>
+
               ${
-                state.phoneTeamMsgDone && myTmInfo.hasText
+                mySentWords.length
                   ? `
-                    <div class="ph-standby-box" style="background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:20px;padding:20px 16px">
-                      <div style="font-size:34px;line-height:1">🤝</div>
-                      <strong style="font-size:18px;color:#0f172a">ส่งข้อความขึ้นจอใหญ่เรียบร้อยแล้ว!</strong>
-                      <p style="margin:0;font-size:15px;font-weight:700;color:#312e81;line-height:1.45">“${esc(myTmInfo.text)}”</p>
-                      <button type="button" class="tv-pill-btn" style="margin-top:8px" data-act="phone-edit-team-msg">✏️ แก้ไขข้อความ</button>
+                    <div style="border-top:1px dashed #e2e8f0;padding-top:12px">
+                      <div style="font-size:13px;font-weight:800;color:#15803d;margin-bottom:6px">✓ Post-it ที่คุณส่งขึ้นบอร์ดแล้ว (${mySentWords.length} แผ่น):</div>
+                      <div class="ph-sent-chips" style="justify-content:flex-start">
+                        ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                      </div>
                     </div>
                   `
-                  : `
-                    <form data-form="phone-send-team-msg" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
-                      <textarea
-                        id="phTeamMsgInput"
-                        name="teamMsg"
-                        class="ph-postit-textarea"
-                        style="min-height:104px;background:#f8fafc;border-color:#c7d2fe"
-                        maxlength="220"
-                        placeholder=""
-                      >${esc(myTmInfo.text || "")}</textarea>
-
-                      <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#4f46e5,#2563eb)">
-                        🤝 ส่งข้อความขึ้นจอใหญ่!
-                      </button>
-                    </form>
-                  `
+                  : ""
               }
             </section>
           </main>
-        `
+        ` +
+        zoomSheetHtml
       );
     }
 
-    // Step 2B-Rating: When Facilitator moves to Slide 4 (rating_overview), Student Phone opens THEIR OWN Word Cloud Self-Rating!
-    if (state.view === "rating_overview" && !state.phonePickedTargetId && myMem) {
+    // Step 2B-Rating: Slide 4 (rating_overview) Calm Base Screen -> Tap Button to Zoom In to Rate & Type Reason!
+    if (state.view === "rating_overview" && myMem) {
       const myCloudAgg = getAggregatedWords(myMem.uid);
       const myRInfo = getMemberSelfRatingInfo(myMem.uid);
-      const currentVal = myRInfo.hasScore ? myRInfo.score : state.phoneDraftRating;
 
       return (
         topBar +
@@ -3902,8 +4190,8 @@
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>⭐ ให้คะแนน Word Cloud ของตัวคุณเอง!</span>
-                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-open-peer-grid-temp">พิมพ์ให้เพื่อนเพิ่ม</button>
+                <span>⭐ Slide 4 · ให้คะแนน Word Cloud ของคุณ</span>
+                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-open-peer-grid-temp">⊞ พิมพ์ให้เพื่อนเพิ่ม</button>
               </div>
 
               <div class="ph-person-banner">
@@ -3932,157 +4220,40 @@
               </h1>
 
               ${
-                state.phoneSelfRatedDone && myRInfo.hasScore
+                myRInfo.hasScore
                   ? `
-                    <div class="ph-standby-box" style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:20px;padding:20px 16px">
-                      <div style="width:56px;height:56px;border-radius:50%;background:#196cff;color:#fff;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(25,108,255,0.3)">
+                    <div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:18px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+                      <div style="width:48px;height:48px;border-radius:50%;background:#196cff;color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                         ${myRInfo.score.toFixed(1)}
                       </div>
-                      <strong style="font-size:18px;color:#0f172a">ส่งคะแนนขึ้นจอใหญ่เรียบร้อยแล้ว!</strong>
-                      ${myRInfo.reason ? `<p style="margin:0;font-size:14px;color:#1e293b">💬 "${esc(myRInfo.reason)}"</p>` : ""}
-                      <button type="button" class="tv-pill-btn" style="margin-top:8px" data-act="phone-edit-self-rating">✏️ แก้ไขคะแนน / เหตุผล</button>
-                    </div>
-                  `
-                  : `
-                    <form data-form="phone-send-rating" data-target-id="${esc(myMem.uid)}" style="display:flex;flex-direction:column;gap:12px">
-                      <div style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:18px;padding:14px 16px">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                          <span style="font-size:13.5px;font-weight:800;color:#334155">คะแนนความตรงกับตัวตน</span>
-                          <span id="phRatingReadout" style="font-size:26px;font-weight:900;color:#196cff">${currentVal.toFixed(1)} <span style="font-size:14px;color:#64748b">/ 5.0</span></span>
-                        </div>
-                        <input
-                          type="range"
-                          id="phRatingSlider"
-                          name="score"
-                          min="1"
-                          max="5"
-                          step="0.5"
-                          value="${currentVal}"
-                          style="width:100%;margin:8px 0 6px;accent-color:#196cff;height:28px;cursor:pointer"
-                        />
-                        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b">
-                          <span>1.0 · Strongly disagree</span>
-                          <span>5.0 · Strongly agree</span>
-                        </div>
+                      <div style="min-width:0;flex:1">
+                        <strong style="display:block;font-size:15px;color:#0f172a">ส่งคะแนนขึ้นจอใหญ่แล้ว ✓</strong>
+                        ${myRInfo.reason ? `<span style="font-size:13.5px;color:#334155">💬 "${esc(myRInfo.reason)}"</span>` : ""}
                       </div>
-
-                      <div>
-                        <div class="ph-input-label"><span>ทำไมถึงให้คะแนนเช่นนั้น?</span></div>
-                        <textarea
-                          id="phReasonInput"
-                          name="reason"
-                          class="ph-postit-textarea"
-                          style="min-height:74px;background:#f8fafc;border-color:#cbd5e1"
-                          maxlength="140"
-                          placeholder=""
-                        >${esc(myRInfo.reason || "")}</textarea>
-                      </div>
-
-                      <button type="submit" class="ph-submit-btn" style="background:linear-gradient(135deg,#196cff,#2563eb)">
-                        ⭐ ส่งคะแนนและเหตุผลขึ้นจอใหญ่!
-                      </button>
-                    </form>
-                  `
-              }
-            </section>
-          </main>
-        `
-      );
-    }
-
-    // Step 2B: Once Facilitator reaches Overview 21 คน (or browses member results), OR manual mode -> Student Picker Grid!
-    const isOnHfSlide = state.view === "detail" && state.activeTargetId === TOPIC_HF_BOARD_ID && !state.phonePickedTargetId;
-    if (!isOnHfSlide && state.view !== "detail" && !state.phonePickedTargetId) {
-      const hostObj = state.hostView === "detail" ? TARGET_MAP.get(state.hostTargetId) : null;
-      const hostMem = hostObj && hostObj.member ? hostObj.member : null;
-      const canJumpHostMem = Boolean(hostMem && (!state.myMemberUid || state.myMemberUid !== hostMem.uid));
-
-      return (
-        topBar +
-        `
-          <main class="ph-shell">
-            <section class="ph-card">
-              <div class="ph-sync-banner">
-                <span>✍️ แตะเลือกคนในกลุ่มเพื่อพิมพ์คำสะท้อนตัวตนได้เลย!</span>
-              </div>
-
-              ${
-                hostMem
-                  ? `
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;flex-wrap:wrap">
-                      <span style="font-size:13px;font-weight:700;color:#1e40af">📺 จอใหญ่กำลังเปิดดูผลของ <strong>'${esc(hostMem.mentiName)}'</strong></span>
-                      ${
-                        canJumpHostMem
-                          ? `<button type="button" class="tv-pill-btn is-primary" style="height:28px;font-size:12px;padding:0 10px" data-act="phone-pick-peer" data-target-id="${esc(hostMem.uid)}">พิมพ์ให้ '${esc(hostMem.nickname)}' →</button>`
-                          : `<span style="font-size:12px;font-weight:800;color:#92400e">🌟 การ์ดของคุณเอง</span>`
-                      }
                     </div>
                   `
                   : ""
               }
 
-              <div class="id-picker-grid">
-                ${MEMBERS.map((memItem) => {
-                  const isMe = Boolean(state.myMemberUid && state.myMemberUid === memItem.uid);
-                  const sentCnt = getMySentWordsForTarget(memItem.uid).length;
-                  if (isMe) {
-                    return `
-                      <div class="id-picker-card" style="opacity:0.55;cursor:not-allowed;background:#fefce8;border-color:#fde68a" title="ปิดช่องพิมพ์สำหรับการ์ดของตัวเอง">
-                        <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
-                        <strong>${esc(memItem.nickname)}</strong>
-                        <span style="color:#92400e;font-weight:800">🌟 ตัวคุณเอง</span>
-                      </div>
-                    `;
-                  }
-                  return `
-                    <button
-                      type="button"
-                      class="id-picker-card"
-                      style="${sentCnt > 0 ? "border-color:#86efac;background:#f0fdf4" : ""}"
-                      data-act="phone-pick-peer"
-                      data-target-id="${esc(memItem.uid)}"
-                    >
-                      <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
-                      <strong>${esc(memItem.nickname)}</strong>
-                      <span style="${sentCnt > 0 ? "color:#15803d;font-weight:800" : ""}">
-                        ${sentCnt > 0 ? `✓ ส่งแล้ว (${sentCnt})` : esc(memItem.kind === "student" ? memItem.shortNo : "อาจารย์")}
-                      </span>
-                    </button>
-                  `;
-                }).join("")}
-              </div>
-
-              <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed #e2e8f0">
-                <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a" data-act="phone-pick-peer" data-target-id="${TOPIC_HF_BOARD_ID}">
-                  📌 Hopes &amp; Fears
-                </button>
-                <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6" data-act="phone-pick-peer" data-target-id="${TOPIC_TRIP_ID}">
-                  🚂 ทริปกุฉินารายณ์
-                </button>
-              </div>
+              <button
+                type="button"
+                class="ph-submit-btn"
+                style="background:linear-gradient(135deg,#196cff,#2563eb)"
+                data-act="phone-open-compose"
+                data-compose-mode="rating"
+              >
+                ${myRInfo.hasScore ? "✏️ กดเพื่อแก้ไขคะแนน / เหตุผล" : "🔍 กด Zoom In เพื่อให้คะแนน & พิมพ์เหตุผล"}
+              </button>
             </section>
           </main>
-        `
+        ` +
+        zoomSheetHtml
       );
     }
 
-    // Step 3: Active Slide on Phone (either Slide 2 Hopes & Fears OR Student's Picked Person!)
-    const effectiveTargetId = state.phonePickedTargetId || state.activeTargetId || TOPIC_HF_BOARD_ID;
-    const tObj = TARGET_MAP.get(effectiveTargetId) || TARGET_LIST[0];
-    const m = tObj.member;
-    const isSelfTarget = Boolean(m && state.myMemberUid && state.myMemberUid === m.uid);
-    const mySentWords = getMySentWordsForTarget(tObj.id);
-    const rMap = state.ratingsByTarget.get(tObj.id) || new Map();
-    const myPrevRating = rMap.get(persistentPid);
-    const canBackToPicker = Boolean(state.phonePickedTargetId || state.phoneManualOverride || state.hostView !== "detail" || state.hostTargetId !== TOPIC_HF_BOARD_ID);
-
-    // 3A. HOPES & FEARS Post-it Pad on Phone!
-    if (tObj.isHfMode) {
-      const selPol = state.hfSelectedPolarity === "fears" ? "fears" : "hopes";
-      const targetBucketId = selPol === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
-      const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
-
-      const questionHtml = `<span class="zm-highlight-name">Hopes &amp; Fears</span> คุณมีความหวัง (Hope · Post-it เขียวอ่อน) หรือความกังวล (Fear · Post-it ชมพูอ่อน) อย่างไรในการวนรายวิชา COMMED ช่วง 5–6 สัปดาห์นี้?`;
+    // Step 2B-TeamMsg: Slide 5 (team_message_overview) Calm Base Screen -> Tap Button to Zoom In to Type!
+    if (state.view === "team_message_overview" && myMem) {
+      const myTmInfo = getMemberTeamMessageInfo(myMem.uid);
 
       return (
         topBar +
@@ -4090,225 +4261,143 @@
           <main class="ph-shell">
             <section class="ph-card">
               <div class="ph-sync-banner">
-                <span>📌 Hopes &amp; Fears Post-it</span>
-                ${state.phonePickedTargetId ? `<button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-back-picker">⊞ เลือกคน (21 คน)</button>` : ""}
+                <span>🤝 Slide 5 · 1 เรื่องที่อยากบอกทุกคนในทีม</span>
               </div>
 
-              <h1 class="ph-big-question">${questionHtml}</h1>
+              <div class="ph-person-banner">
+                <img src="${esc(myMem.photo)}" alt="${esc(myMem.nickname)}" />
+                <div style="min-width:0">
+                  <div style="font-size:12px;font-weight:800;color:#4f46e5">🌟 ข้อความจาก '${esc(myMem.mentiName)}'</div>
+                  <div style="font-size:13px;color:#475569">${esc(myMem.fullName)}</div>
+                </div>
+              </div>
+
+              <h1 class="ph-big-question" style="font-size:18px">
+                1 เรื่องที่ <span class="zm-highlight-name">'${esc(myMem.mentiName)}'</span> อยากบอกกับทุกคน เพื่อจะได้ทำงานร่วมกันอย่างราบรื่น เข้าใจกัน และสร้างบรรยากาศที่ดีในทีม?
+              </h1>
 
               ${
-                showSubmittedCard
+                myTmInfo.hasText
                   ? `
-                    <div class="ph-standby-box" style="background:${selPol === "fears" ? "#fdf2f8;border:1.5px solid #f472b6" : "#f7fee7;border:1.5px solid #84cc16"};border-radius:20px;padding:22px 16px">
-                      <div style="font-size:36px;line-height:1">📌</div>
-                      <strong style="font-size:19px;color:#0f172a">แปะ Post-it ขึ้นบอร์ดใหญ่เรียบร้อยแล้ว!</strong>
-                      <p style="margin:0;font-size:14px;color:#475569">👀 เงยหน้าดูบอร์ด <strong>Hopes &amp; Fears</strong> บนจอใหญ่พร้อมกันเลย!</p>
-                      ${
-                        mySentWords.length
-                          ? `
-                            <div style="margin-top:6px">
-                              <div class="ph-sent-chips">
-                                ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
-                              </div>
-                            </div>
-                          `
-                          : ""
-                      }
-                      <button type="button" class="ph-submit-btn" style="margin-top:10px" data-act="phone-more-words">
-                        ➕ เขียน Post-it แผ่นต่อไปเพิ่มอีก
-                      </button>
+                    <div style="background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:18px;padding:14px 16px">
+                      <div style="font-size:12.5px;font-weight:800;color:#4338ca;margin-bottom:4px">✓ ส่งขึ้นจอใหญ่เรียบร้อยแล้ว:</div>
+                      <p style="margin:0;font-size:15px;font-weight:700;color:#1e1b4b;line-height:1.45">“${esc(myTmInfo.text)}”</p>
                     </div>
                   `
-                  : `
-                    <form data-form="phone-send-hf" data-slide-id="${esc(tObj.id)}" data-target-id="${targetBucketId}" style="display:flex;flex-direction:column;gap:12px">
-                      <div class="ph-postit-pad ${selPol === "fears" ? "is-fears" : "is-hopes"}">
-                        <div style="display:flex;justify-content:space-between;align-items:center">
-                          <span style="font-size:16px;font-weight:900;text-decoration:underline">${selPol === "fears" ? "Fear" : "Hope"}</span>
-                          <span style="font-size:11.5px;font-weight:800;opacity:0.8">${selPol === "fears" ? "🌸 Post-it ชมพูอ่อน" : "🌱 Post-it เขียวอ่อน"}</span>
-                        </div>
-                        <textarea
-                          id="phHfInput"
-                          name="hfText"
-                          class="ph-postit-textarea"
-                          maxlength="72"
-                          placeholder=""
-                        ></textarea>
-                      </div>
-
-                      <div class="ph-hf-selector-grid">
-                        <button
-                          type="button"
-                          class="ph-hf-card-btn is-hopes${selPol === "hopes" ? " is-selected" : ""}"
-                          data-act="set-hf-polarity"
-                          data-polarity="hopes"
-                        >
-                          🌱 Hope (เขียวอ่อน)
-                        </button>
-                        <button
-                          type="button"
-                          class="ph-hf-card-btn is-fears${selPol === "fears" ? " is-selected" : ""}"
-                          data-act="set-hf-polarity"
-                          data-polarity="fears"
-                        >
-                          🌸 Fear (ชมพูอ่อน)
-                        </button>
-                      </div>
-
-                      <button type="submit" class="ph-submit-btn">
-                        📌 แปะ Post-it ${selPol === "fears" ? "สีชมพูอ่อน (Fear)" : "สีเขียวอ่อน (Hope)"} ขึ้นจอใหญ่!
-                      </button>
-                    </form>
-                  `
+                  : ""
               }
+
+              <button
+                type="button"
+                class="ph-submit-btn"
+                style="background:linear-gradient(135deg,#4f46e5,#2563eb)"
+                data-act="phone-open-compose"
+                data-compose-mode="team_msg"
+              >
+                ${myTmInfo.hasText ? "✏️ กดเพื่อแก้ไขข้อความ" : "🔍 กด Zoom In เพื่อพิมพ์ข้อความถึงเพื่อนในทีม"}
+              </button>
             </section>
           </main>
-        `
+        ` +
+        zoomSheetHtml
       );
     }
 
-    // 3B. Self-Slide Protection
-    const bigQuestionHtml = m
-      ? `หากต้องแนะนำ <span class="zm-highlight-name">'${esc(m.mentiName)}'</span> ให้ผู้อื่นรู้จักในระยะเวลาอันสั้น คุณจะใช้คำหรือประโยคใดที่สะท้อนความเป็นตัวตนได้มากที่สุด?`
-      : `เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?`;
-
-    if (isSelfTarget && m) {
+    // Step 2B-Trip: Slide 6 (Trip) Calm Base Screen -> Tap Button to Zoom In to Type!
+    if (state.view === "detail" && state.activeTargetId === TOPIC_TRIP_ID) {
+      const myTripWords = getMySentWordsForTarget(TOPIC_TRIP_ID);
       return (
         topBar +
         `
           <main class="ph-shell">
             <section class="ph-card">
-              <div class="ph-sync-banner" style="background:linear-gradient(135deg,#fefce8,#eff6ff);border-color:#fde68a;color:#92400e">
-                <span>🌟 ตอนนี้เป็นการ์ดของตัวคุณเอง!</span>
-                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-back-picker">⊞ เลือกพิมพ์ให้เพื่อนคนอื่น</button>
+              <div class="ph-sync-banner">
+                <span>🚂 ทริปรถไฟ &amp; รพร.กุฉินารายณ์</span>
+                <button type="button" class="tv-pill-btn" style="height:28px;font-size:12px" data-act="phone-open-peer-grid-temp">⊞ ตาราง 21 คน</button>
               </div>
-
-              <div class="ph-standby-box" style="background:#fefce8;border:1.5px solid #fde68a;border-radius:20px;padding:24px 16px">
-                <div class="ph-pulse-ring">
-                  <img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />
-                </div>
-                <strong style="font-size:20px;color:#78350f">การ์ดของ '${esc(m.mentiName)}' ✨</strong>
-                <p style="margin:0;font-size:14.5px;color:#92400e;line-height:1.5">
-                  ระบบปิดช่องพิมพ์สำหรับเจ้าของชื่อ — กดปุ่มด้านล่างเพื่อเลือกพิมพ์คำสะท้อนให้เพื่อนคนอื่นได้เลย!
-                </p>
-                <button type="button" class="ph-submit-btn" style="margin-top:8px" data-act="phone-back-picker">
-                  ⊞ กลับหน้าเลือกคน (21 คน)
-                </button>
-              </div>
+              <h1 class="ph-big-question">
+                เมื่อพูดถึง <span class="zm-highlight-name">'ทริปรถไฟ &amp; รพร.กุฉินารายณ์'</span> คำหรือความคาดหวังแรกที่ผุดขึ้นมาในใจคุณคืออะไร?
+              </h1>
+              <button
+                type="button"
+                class="ph-submit-btn"
+                data-act="phone-open-compose"
+                data-compose-mode="trip"
+              >
+                🔍 กด Zoom In เพื่อพิมพ์ความคาดหวังทริป
+              </button>
+              ${
+                myTripWords.length
+                  ? `
+                    <div style="border-top:1px dashed #e2e8f0;padding-top:10px">
+                      <div style="font-size:12.5px;font-weight:800;color:#15803d;margin-bottom:6px">✓ คำที่คุณส่งแล้ว (${myTripWords.length}):</div>
+                      <div class="ph-sent-chips" style="justify-content:flex-start">
+                        ${myTripWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
+                      </div>
+                    </div>
+                  `
+                  : ""
+              }
             </section>
           </main>
-        `
+        ` +
+        zoomSheetHtml
       );
     }
 
-    // 3C. Full Type-Answer Controller for Peer Reflection Slides
-    const showSubmittedCard = state.phoneJustSubmittedTargetId === tObj.id;
-
+    // Step 2C (Default / Slide 3 Overview 21 คน): Rock-Solid 21-Member Picker Grid -> Tap Peer Card to Zoom In to Type, Tap ✕ to Close!
     return (
       topBar +
       `
         <main class="ph-shell">
           <section class="ph-card">
             <div class="ph-sync-banner">
-              <span>✍️ ส่งคำสะท้อนขึ้นจอใหญ่</span>
-              ${canBackToPicker ? `<button type="button" class="tv-pill-btn is-primary" style="height:28px;font-size:12px;padding:0 11px" data-act="phone-back-picker">⊞ เลือกคนอื่น (21 คน)</button>` : ""}
+              <span>🔍 แตะเลือกเพื่อนเพื่อ Zoom In พิมพ์คำสะท้อน (กด ✕ เพื่อปิดออก)</span>
             </div>
 
-            <div class="ph-person-banner">
-              ${
-                m
-                  ? `<img src="${esc(m.photo)}" alt="${esc(m.nickname)}" />`
-                  : `<div style="width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0">🚂</div>`
-              }
-              <div style="min-width:0">
-                <div style="font-size:11.5px;font-weight:800;color:#2563eb">
-                  ${esc(m ? (m.kind === "student" ? `รหัสท้าย ${m.shortNo} · #${m.studentNo}/20` : m.roleBadge) : "10–19 ธ.ค. 2569 · จ.กาฬสินธุ์")}
-                </div>
-                <div style="font-size:19px;font-weight:800;color:#0f172a;line-height:1.15">${esc(tObj.shortTitle)}</div>
-                ${m ? `<div style="font-size:12.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.fullName)}</div>` : ""}
-              </div>
+            <div class="id-picker-grid">
+              ${MEMBERS.map((memItem) => {
+                const isMe = Boolean(state.myMemberUid && state.myMemberUid === memItem.uid);
+                const sentCnt = getMySentWordsForTarget(memItem.uid).length;
+                if (isMe) {
+                  return `
+                    <div class="id-picker-card" style="opacity:0.55;cursor:not-allowed;background:#fefce8;border-color:#fde68a" title="ปิดช่องพิมพ์สำหรับการ์ดของตัวเอง">
+                      <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
+                      <strong>${esc(memItem.nickname)}</strong>
+                      <span style="color:#92400e;font-weight:800">🌟 ตัวคุณเอง</span>
+                    </div>
+                  `;
+                }
+                return `
+                  <button
+                    type="button"
+                    class="id-picker-card"
+                    style="${sentCnt > 0 ? "border-color:#86efac;background:#f0fdf4" : ""}"
+                    data-act="phone-pick-peer"
+                    data-target-id="${esc(memItem.uid)}"
+                  >
+                    <img src="${esc(memItem.photo)}" alt="${esc(memItem.nickname)}" loading="lazy" />
+                    <strong>${esc(memItem.nickname)}</strong>
+                    <span style="${sentCnt > 0 ? "color:#15803d;font-weight:800" : ""}">
+                      ${sentCnt > 0 ? `✓ ส่งแล้ว (${sentCnt})` : `🔍 พิมพ์ให้ (${esc(memItem.kind === "student" ? memItem.shortNo : "AJ")})`}
+                    </span>
+                  </button>
+                `;
+              }).join("")}
             </div>
 
-            <h1 class="ph-big-question">${bigQuestionHtml}</h1>
-
-            ${
-              showSubmittedCard
-                ? `
-                  <div class="ph-standby-box" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:20px;padding:22px 16px">
-                    <div style="font-size:38px;line-height:1">🎉</div>
-                    <strong style="font-size:19px;color:#14532d">ส่งคำสะท้อนให้ '${esc(tObj.shortTitle)}' เรียบร้อย!</strong>
-                    ${
-                      mySentWords.length
-                        ? `
-                          <div style="margin-top:6px">
-                            <div class="ph-sent-chips">
-                              ${mySentWords.map((w) => `<span class="ph-sent-chip">${esc(w)}</span>`).join("")}
-                            </div>
-                          </div>
-                        `
-                        : ""
-                    }
-                    <div style="display:flex;flex-direction:column;gap:8px;width:100%;margin-top:10px">
-                      <button type="button" class="ph-submit-btn" data-act="phone-back-picker">
-                        ⊞ เลือกพิมพ์ให้คนต่อไป (21 คน)
-                      </button>
-                      <button type="button" class="tv-pill-btn" style="height:40px;width:100%" data-act="phone-more-words">
-                        ➕ พิมพ์เพิ่มให้ '${esc(m ? m.nickname : tObj.shortTitle)}' อีก
-                      </button>
-                    </div>
-                  </div>
-                `
-                : `
-                  <form data-form="phone-send-words" data-target-id="${esc(tObj.id)}" style="display:flex;flex-direction:column;gap:12px">
-                    <div class="ph-inputs-stack">
-                      <div>
-                        <div class="ph-input-label"><span>คำหรือประโยคที่ 1 *</span><span>สูงสุด 54 ตัวอักษร</span></div>
-                        <input
-                          type="text"
-                          id="phW1"
-                          name="w1"
-                          class="ph-answer-input"
-                          autocomplete="off"
-                          placeholder=""
-                          maxlength="54"
-                        />
-                      </div>
-                      <div>
-                        <div class="ph-input-label"><span>คำหรือประโยคที่ 2 (ถ้ามี)</span></div>
-                        <input
-                          type="text"
-                          id="phW2"
-                          name="w2"
-                          class="ph-answer-input"
-                          autocomplete="off"
-                          placeholder=""
-                          maxlength="54"
-                        />
-                      </div>
-                      <div>
-                        <div class="ph-input-label"><span>คำหรือประโยคที่ 3 (ถ้ามี)</span></div>
-                        <input
-                          type="text"
-                          id="phW3"
-                          name="w3"
-                          class="ph-answer-input"
-                          autocomplete="off"
-                          placeholder=""
-                          maxlength="54"
-                        />
-                      </div>
-                    </div>
-
-                    <div class="zm-emoji-bar">
-                      ${QUICK_EMOJIS.map((em) => `<button type="button" class="zm-emoji-btn" data-act="phone-emoji" data-emoji="${em}">${em}</button>`).join("")}
-                    </div>
-
-                    <button type="submit" class="ph-submit-btn">🚀 ส่งคำตอบขึ้นจอใหญ่!</button>
-                  </form>
-                `
-            }
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed #e2e8f0">
+              <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:linear-gradient(135deg,#ecfccb,#fce7f3);border-color:#93c5fd;color:#1e3a8a" data-act="phone-open-compose" data-compose-mode="hf" data-polarity="hopes">
+                📌 พิมพ์ Hopes &amp; Fears
+              </button>
+              <button type="button" class="tv-pill-btn" style="flex:1;height:38px;background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6" data-act="phone-open-compose" data-compose-mode="trip">
+                🚂 พิมพ์ทริปกุฉินารายณ์
+              </button>
+            </div>
           </section>
         </main>
-      `
+      ` +
+      zoomSheetHtml
     );
   }
 
@@ -4319,7 +4408,7 @@
         ${renderUniversalNavClusterHtml(true)}
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${extraRightHtml || ""}
-          <button type="button" class="tv-pill-btn" data-act="close-modals">✕ ปิด</button>
+          <button type="button" class="zm-close-x-btn" data-act="close-modals">✕ <span>ปิด</span></button>
         </div>
       </div>
       ${titleHtml ? `<div style="margin-bottom:12px">${titleHtml}</div>` : ""}
@@ -4467,7 +4556,7 @@
   }
 
   function renderPreservingFocus() {
-    const preserveIds = ["zmWordInput", "phW1", "phW2", "phW3", "phHfInput", "phReasonInput", "phTeamMsgInput", "pin3Input"];
+    const preserveIds = ["zmWordInput", "pcHfModalInput", "phW1", "phW2", "phW3", "phHfInput", "phReasonInput", "phTeamMsgInput", "pin3Input"];
     const savedValues = {};
     preserveIds.forEach((id) => {
       const el = document.getElementById(id);
@@ -4488,12 +4577,41 @@
     if (activeId) {
       const focusTarget = document.getElementById(activeId);
       if (focusTarget) {
-        focusTarget.focus();
         try {
+          focusTarget.focus({ preventScroll: true });
           if (selStart !== null) focusTarget.setSelectionRange(selStart, selStart);
         } catch (_) {}
       }
     }
+  }
+
+  /* In-place live result updater: updates Word Cloud / Miro / Rating / Quote WITHOUT re-mounting outer cards or inputs! */
+  function syncLiveDataUi() {
+    if (state.role === "participant") {
+      // Never touch DOM while student has Zoom-In Typing Sheet open!
+      if (state.phoneComposeOpen) return;
+      renderPreservingFocus();
+      return;
+    }
+
+    if (state.view === "detail" && !state.resultsModalTargetId && !state.qrModalOpen && !state.identityModalOpen && !state.roadmapModalOpen) {
+      const dynEl = document.getElementById("zmLiveDynamicBody");
+      if (dynEl) {
+        const tObj = TARGET_MAP.get(state.activeTargetId) || TARGET_LIST[0];
+        const isHfBoard = Boolean(tObj.isHfMode);
+        const agg = getAggregatedWords(isHfBoard ? TOPIC_HF_BOARD_ID : tObj.id);
+        dynEl.innerHTML = renderDetailDynamicVisualHtml(tObj, agg);
+        const cntBadge = document.getElementById("zmLiveCountBadge");
+        if (cntBadge) cntBadge.textContent = String(agg.totalSubmissions);
+        const tabCnt = document.getElementById("zmTabWordCount");
+        if (tabCnt) tabCnt.textContent = String(agg.totalSubmissions);
+        syncMiroBoardAfterRender();
+        return;
+      }
+    }
+
+    if (state.pcComposeModalOpen) return;
+    renderPreservingFocus();
   }
 
   /* ---------- 12B. Miro-Style Free-Boundary Pan / Zoom / Pinch / Auto-Fit Engine ---------- */
@@ -4547,14 +4665,14 @@
     const padX = 32;
     const padY = 34;
     const rawScale = Math.min((vw - padX * 2) / bw, (vh - padY * 2) / bh);
-    const fitScale = Math.max(0.2, Math.min(1.22, rawScale));
+    const fitScale = Math.max(0.22, Math.min(1.0, rawScale));
 
     state.miroCam.scale = fitScale;
     state.miroCam.x = Math.round((vw - bw * fitScale) / 2);
     state.miroCam.y = Math.round((vh - bh * fitScale) / 2);
     state.miroLastSig = curSig;
     state.miroNeedsResizeFit = false;
-    applyMiroTransformToDom(animate);
+    applyMiroTransformToDom(Boolean(animate));
   }
 
   function zoomMiroAroundPoint(factor, focalX, focalY, animate) {
@@ -4690,10 +4808,7 @@
     }
 
     if (state.miroAutoFit && (curSig !== state.miroLastSig || state.miroNeedsResizeFit)) {
-      applyMiroTransformToDom(false);
-      window.requestAnimationFrame(() => {
-        fitMiroToContent(state.miroLastSig !== "" && state.miroLastSig !== "empty");
-      });
+      fitMiroToContent(false);
     } else {
       applyMiroTransformToDom(false);
     }
@@ -4765,6 +4880,18 @@
       render();
       return;
     }
+    if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-act") === "backdrop-close-pc-hf") {
+      state.pcComposeModalOpen = false;
+      render();
+      return;
+    }
+    if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-act") === "backdrop-close-phone-compose") {
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
+      state.phonePickedTargetId = "";
+      render();
+      return;
+    }
 
     const btn = ev.target && ev.target.closest ? ev.target.closest("[data-act]") : null;
     if (!btn) return;
@@ -4772,6 +4899,35 @@
 
     if (act === "nav-back") {
       stepBackOneScreen();
+    } else if (act === "close-zoom-card") {
+      if (state.view === "detail") {
+        if (state.activeTargetId === TOPIC_HF_BOARD_ID) {
+          if (state.role === "facilitator") goToLobbySlide1(false);
+          else zoomOutToOverview(false, false, "overview");
+        } else {
+          zoomOutToOverview(false, false, state.detailReturnView || "overview");
+        }
+      }
+    } else if (act === "open-pc-hf-compose") {
+      const pol = btn.getAttribute("data-polarity") === "fears" ? "fears" : "hopes";
+      state.hfSelectedPolarity = pol;
+      state.pcComposeModalOpen = true;
+      render();
+    } else if (act === "close-pc-hf-compose") {
+      state.pcComposeModalOpen = false;
+      render();
+    } else if (act === "phone-open-compose") {
+      const mode = btn.getAttribute("data-compose-mode") || "hf";
+      const pol = btn.getAttribute("data-polarity");
+      if (pol === "hopes" || pol === "fears") state.hfSelectedPolarity = pol;
+      state.phoneComposeMode = mode;
+      state.phoneComposeOpen = true;
+      render();
+    } else if (act === "phone-close-compose") {
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
+      state.phonePickedTargetId = "";
+      render();
     } else if (act === "go-lobby") {
       goToLobbySlide1(false);
     } else if (act === "clicker-next") {
@@ -4875,60 +5031,67 @@
       const mem = MEMBER_MAP.get(uid);
       if (mem) applyIdentityLogin(mem);
     } else if (act === "phone-pick-name") {
+      state.phoneComposeOpen = false;
       state.phonePickingIdentity = true;
       state.pinDraft = "";
       state.pinError = "";
       render();
-      setTimeout(() => {
-        const pInp = document.getElementById("pin3Input");
-        if (pInp) pInp.focus();
-      }, 40);
     } else if (act === "phone-cancel-pick") {
       state.phonePickingIdentity = false;
       render();
     } else if (act === "phone-more-words") {
       state.phoneJustSubmittedTargetId = "";
       render();
-      setTimeout(() => {
-        const el = document.getElementById("phHfInput") || document.getElementById("phW1");
-        if (el) el.focus();
-      }, 40);
     } else if (act === "phone-edit-self-rating") {
       state.phoneSelfRatedDone = false;
+      state.phoneComposeMode = "rating";
+      state.phoneComposeOpen = true;
       render();
     } else if (act === "phone-edit-team-msg") {
       state.phoneTeamMsgDone = false;
+      state.phoneComposeMode = "team_msg";
+      state.phoneComposeOpen = true;
       render();
-      setTimeout(() => {
-        const el = document.getElementById("phTeamMsgInput");
-        if (el) el.focus();
-      }, 40);
     } else if (act === "phone-open-peer-grid-temp") {
+      state.phoneManualOverride = true;
       state.view = "overview";
+      state.phoneComposeOpen = false;
       state.phonePickedTargetId = "";
       render();
     } else if (act === "phone-pick-peer") {
       const tid = btn.getAttribute("data-target-id") || "";
       if (!tid || !TARGET_MAP.has(tid)) return;
       if (state.myMemberUid && state.myMemberUid === tid) return;
-      state.phonePickedTargetId = tid;
+      if (tid === TOPIC_HF_BOARD_ID) {
+        state.phoneComposeMode = "hf";
+        state.phoneComposeOpen = true;
+      } else if (tid === TOPIC_TRIP_ID) {
+        state.phonePickedTargetId = TOPIC_TRIP_ID;
+        state.phoneComposeMode = "trip";
+        state.phoneComposeOpen = true;
+      } else {
+        state.phonePickedTargetId = tid;
+        state.phoneComposeMode = "peer";
+        state.phoneComposeOpen = true;
+      }
       state.phoneJustSubmittedTargetId = "";
       syncDefaultPolarityWithTarget(tid);
       render();
-      setTimeout(() => {
-        const el = document.getElementById("phHfInput") || document.getElementById("phW1");
-        if (el) el.focus();
-      }, 40);
     } else if (act === "phone-back-picker") {
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
       state.phonePickedTargetId = "";
       state.phoneJustSubmittedTargetId = "";
       render();
     } else if (act === "phone-enable-manual") {
       state.phoneManualOverride = true;
+      state.view = "overview";
+      state.phoneComposeOpen = false;
       state.phonePickedTargetId = "";
       render();
     } else if (act === "phone-disable-manual") {
       state.phoneManualOverride = false;
+      state.phoneComposeOpen = false;
       state.phonePickedTargetId = "";
       render();
     } else if (act === "phone-manual-target") {
@@ -5105,6 +5268,16 @@
         state.pinError = "ไม่พบรหัส 3 ตัวท้ายนี้ในกลุ่มที่ 1 กุฉินารายณ์ (กรอกเช่น 006, 035, 166 หรือ AJ)";
         renderPreservingFocus();
       }
+    } else if (fType === "pc-modal-send-hf") {
+      ev.preventDefault();
+      const bucketId = state.hfSelectedPolarity === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
+      const inp = form.elements.hfText;
+      if (!inp || !String(inp.value || "").trim()) return;
+      if (submitWordBatch(bucketId, [inp.value])) {
+        inp.value = "";
+        state.pcComposeModalOpen = false;
+        render();
+      }
     } else if (fType === "send-hf-postit") {
       ev.preventDefault();
       const bucketId = state.hfSelectedPolarity === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
@@ -5117,12 +5290,11 @@
       const bucketId = state.hfSelectedPolarity === "fears" ? TOPIC_FEARS_ID : TOPIC_HOPES_ID;
       const slideId = form.getAttribute("data-slide-id") || state.activeTargetId;
       const inp = form.elements.hfText;
-      if (!inp || !String(inp.value || "").trim()) {
-        if (inp) inp.focus();
-        return;
-      }
+      if (!inp || !String(inp.value || "").trim()) return;
       if (submitWordBatch(bucketId, [inp.value])) {
         inp.value = "";
+        state.phoneComposeOpen = false;
+        state.phoneComposeMode = "";
         state.phoneJustSubmittedTargetId = slideId;
         render();
       }
@@ -5142,12 +5314,11 @@
         form.elements.w3 ? form.elements.w3.value : ""
       ].filter((v) => String(v || "").trim().length > 0);
 
-      if (!vals.length) {
-        const w1 = document.getElementById("phW1");
-        if (w1) w1.focus();
-        return;
-      }
+      if (!vals.length) return;
       if (submitWordBatch(tid, vals)) {
+        state.phoneComposeOpen = false;
+        state.phoneComposeMode = "";
+        state.phonePickedTargetId = "";
         state.phoneJustSubmittedTargetId = tid;
         render();
       }
@@ -5157,17 +5328,19 @@
       const sc = form.elements.score ? Number(form.elements.score.value) : state.phoneDraftRating;
       const rs = form.elements.reason ? form.elements.reason.value : "";
       state.phoneSelfRatedDone = true;
+      state.phoneComposeOpen = false;
+      state.phoneComposeMode = "";
       submitRating(tid, sc, rs);
+      if (state.role === "participant") render();
     } else if (fType === "phone-send-team-msg") {
       ev.preventDefault();
       const tid = form.getAttribute("data-target-id");
       const inp = form.elements.teamMsg;
-      if (!inp || !String(inp.value || "").trim()) {
-        if (inp) inp.focus();
-        return;
-      }
+      if (!inp || !String(inp.value || "").trim()) return;
       if (submitTeamMessage(tid, inp.value)) {
         state.phoneTeamMsgDone = true;
+        state.phoneComposeOpen = false;
+        state.phoneComposeMode = "";
         render();
       }
     }
@@ -5292,9 +5465,13 @@
     () => {
       if (state.role === "participant") return;
       if (state.view !== "detail") return;
+      const vp = document.getElementById("miroBoardViewport");
+      if (!vp) return;
       state.miroNeedsResizeFit = true;
       if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => renderPreservingFocus(), 160);
+      resizeTimer = setTimeout(() => {
+        if (state.miroAutoFit) fitMiroToContent(false);
+      }, 160);
     },
     { passive: true }
   );
